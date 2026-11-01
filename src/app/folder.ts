@@ -9,7 +9,7 @@ import type { SessionResult } from '../sync/engine.ts';
 const run = promisify(execFile);
 const MAX_DEPTH = 3;
 const VIDEO = /\.(mp4|mov)$/i;
-const TRACK = /\.(fit|srt)$/i;
+const TRACK = /\.(fit|gpx|srt)$/i;
 const GPS_INSIDE = /^DJI NEO/i;
 /** A clip counts as belonging to a track if its clock is this close, because clocks can be hours out. */
 const MATCH_MARGIN_S = 2 * 3600 + 300;
@@ -81,7 +81,8 @@ function readSaved(clip: string): SavedClipSync | undefined {
 
 function readTrack(path: string, clips: FolderClip[]): FolderTrack | null {
   try {
-    const isFit = extname(path).toLowerCase() === '.fit';
+    const extension = extname(path).toLowerCase();
+    const isFit = extension === '.fit';
     const fit = isFit ? parseFitActivity(readFileSync(path)) : null;
     const points = fit ? fit.points : readActivity(path);
     if (points.length < 2) return null;
@@ -90,7 +91,7 @@ function readTrack(path: string, clips: FolderClip[]): FolderTrack | null {
     return {
       path,
       name: basename(path),
-      device: fit?.device ?? (isFit ? 'FIT' : 'Drone'),
+      device: fit?.device ?? (isFit ? 'FIT' : extension === '.gpx' ? 'GPX' : 'Drone'),
       start,
       end,
       points: points.length,

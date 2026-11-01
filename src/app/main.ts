@@ -103,7 +103,7 @@ function registerIpc(): void {
   ipcMain.handle('pick-file', async (_event, kind: 'clip' | 'track') => {
     const filters = kind === 'clip'
       ? [{ name: 'Video', extensions: ['mp4', 'mov', 'insv'] }]
-      : [{ name: 'Track', extensions: ['fit', 'srt'] }];
+      : [{ name: 'Track', extensions: ['fit', 'gpx', 'srt'] }];
     const { canceled, filePaths } = await dialog.showOpenDialog(window, { properties: ['openFile'], filters });
     return canceled ? null : filePaths[0];
   });

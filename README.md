@@ -100,7 +100,7 @@ npm run sync -- path/to/clip.mp4 path/to/activity.fit
 | FIT, including laps | Supported |
 | DJI `.SRT` | Supported |
 | GPS inside a DJI Neo video | Supported |
-| GPX | Wanted |
+| GPX, including heart rate, cadence and power | Supported |
 
 ## Add your camera
 
