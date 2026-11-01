@@ -17,6 +17,7 @@ export interface OverlayBatch {
   trackPath: string;
   format: OverlayFormat;
   template: Template;
+  mapToken?: string;
   /** Defaults to an `overlays` folder beside the first clip. */
   outDir?: string;
 }
@@ -35,6 +36,7 @@ export function overlayPath(clip: string, format: OverlayFormat, outDir?: string
 
 let running: UtilityProcess[] = [];
 let cancelled = false;
+let missingTiles = 0;
 
 export function cancelOverlays(): void {
   cancelled = true;
@@ -55,7 +57,10 @@ function renderOne(workerPath: string, item: OverlayRequest, batch: OverlayBatch
     };
     worker.on('message', message => {
       if (message.progress != null) report({ clip: item.clip, state: 'running', fraction: message.progress });
-      else if (message.done) finish('done');
+      else if (message.done) {
+        missingTiles += message.missingTiles ?? 0;
+        finish('done');
+      }
       else if (message.failed) finish('failed', message.failed);
     });
     worker.once('exit', () => finish('failed', 'Stopped unexpectedly'));
@@ -66,13 +71,15 @@ function renderOne(workerPath: string, item: OverlayRequest, batch: OverlayBatch
       trackPath: batch.trackPath,
       format: batch.format,
       template: batch.template,
+      mapToken: batch.mapToken ?? '',
       outPath: overlayPath(item.clip, batch.format, batch.outDir),
     });
   });
 }
 
-export async function renderBatch(workerPath: string, batch: OverlayBatch, report: (p: BatchProgress) => void): Promise<{ done: number; failed: number; cancelled: boolean; outDir: string }> {
+export async function renderBatch(workerPath: string, batch: OverlayBatch, report: (p: BatchProgress) => void): Promise<{ done: number; failed: number; cancelled: boolean; outDir: string; missingTiles: number }> {
   cancelled = false;
+  missingTiles = 0;
   const queue = [...batch.items];
   let done = 0;
   let failed = 0;
@@ -87,5 +94,5 @@ export async function renderBatch(workerPath: string, batch: OverlayBatch, repor
     }
   };
   await Promise.all(Array.from({ length: PARALLEL }, lane));
-  return { done, failed, cancelled, outDir: dirname(overlayPath(batch.items[0].clip, batch.format, batch.outDir)) };
+  return { done, failed, cancelled, missingTiles, outDir: dirname(overlayPath(batch.items[0].clip, batch.format, batch.outDir)) };
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDjiSrt } from './dji-srt.ts';
+import { parseDjiSrt, srtClipStart } from './dji-srt.ts';
 
 const frame = (n: number, time: string, lat: string, lon: string) => `${n}
 00:00:00,000 --> 00:00:00,033
@@ -15,6 +15,12 @@ test('reads time, position and altitude from each frame', () => {
   assert.equal(point.lat, 10.5);
   assert.equal(point.lon, -20.25);
   assert.equal(point.altitude, 144.971);
+});
+
+test('finds the first frame on the track clock, even before GPS has a fix', () => {
+  const text = frame(1, '2026-01-02 03:04:05.250', '0.000000', '0.000000');
+  assert.equal(srtClipStart(text), Date.UTC(2026, 0, 2, 3, 4, 5, 250) / 1000);
+  assert.equal(srtClipStart('nothing here'), null);
 });
 
 test('leaves out frames with no GPS fix', () => {

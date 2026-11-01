@@ -5,11 +5,13 @@ import { dirname, join } from 'node:path';
 import { once } from 'node:events';
 import { GlobalFonts, createCanvas } from '@napi-rs/canvas';
 import type { TrackColumns } from '../sync/timeline.ts';
-import { prepareOverlayData } from './data.ts';
+import { prepareOverlayData, type OverlayData } from './data.ts';
 import { drawFrame, type Ctx } from './draw.ts';
 import { bestH264Encoder } from './encoders.ts';
 import { FORMAT_EXTENSIONS, type OverlayFormat } from './formats.ts';
-import type { Template } from './template.ts';
+import { mapProvider, mapView, tileUrl, visibleTiles } from './map-view.ts';
+import { resolveStyle, type Template } from './template.ts';
+import { loadTiles } from './tile-cache.ts';
 
 
 /** Dials change far slower than the picture, so most frames can be repeats. */
@@ -33,6 +35,7 @@ export interface OverlayJob {
   updateHz?: number;
   /** Extra clockwise turn the viewer has applied, which can swap width and height. */
   extraRotation?: number;
+  mapToken?: string;
 }
 
 /** Size and rate of the clip as it is displayed, so the overlay lines up in an editor. */
@@ -86,6 +89,28 @@ function registerFonts(): void {
 export interface RenderStats {
   frames: number;
   seconds: number;
+  /** Map images that couldn't be fetched. Those parts of the map are blank, and the track still shows. */
+  missingTiles: number;
+}
+
+/** Works out every map image a clip will pass through, so they're ready before drawing starts. */
+function tilesForClip(template: Template, width: number, height: number, clipStart: number, duration: number, data: OverlayData, token: string): Set<string> {
+  const unit = width / 1920;
+  const urls = new Set<string>();
+  for (const widget of template.widgets) {
+    if (widget.display !== 'map' || widget.hidden) continue;
+    const style = resolveStyle(widget, template.theme);
+    const provider = mapProvider(style, token);
+    if (provider.none) continue;
+    const w = widget.width * width;
+    const h = widget.height * height;
+    const step = style.mapMode === 'follow' ? 1 : duration;
+    for (let t = 0; t <= duration; t += step) {
+      const view = mapView({ style, data, width: w, height: h, time: clipStart + t, clipStart, clipEnd: clipStart + duration, unit, maxZoom: provider.maxZoom, tileBias: provider.tileBias });
+      for (const tile of visibleTiles(view, w, h)) urls.add(tileUrl(provider, tile, token));
+    }
+  }
+  return urls;
 }
 
 /** Renders one overlay file. It appears at `outPath` only once it is complete. */
@@ -99,13 +124,18 @@ export async function renderOverlay(
   const { width, height, fps, duration } = clipGeometry(job.clip, job.extraRotation);
   const hz = job.updateHz ?? DEFAULT_UPDATE_HZ;
   const frames = Math.ceil(duration * hz);
+  const data = prepareOverlayData(job.track, job.template.gradientSpan);
+  const mapToken = job.mapToken ?? '';
+  const { images, missing } = await loadTiles(tilesForClip(job.template, width, height, job.clipStart, duration, data, mapToken));
   const frame = {
     width,
     height,
     template: job.template,
-    data: prepareOverlayData(job.track, job.template.gradientSpan),
+    data,
     clipStart: job.clipStart,
     clipEnd: job.clipStart + duration,
+    mapToken,
+    tiles: { image: (url: string) => (images.get(url) ?? null) as unknown as CanvasImageSource | null },
   };
 
   mkdirSync(dirname(job.outPath), { recursive: true });
@@ -148,5 +178,5 @@ export async function renderOverlay(
     rmSync(partial, { force: true });
     throw error;
   }
-  return { frames, seconds: (Date.now() - started) / 1000 };
+  return { frames, seconds: (Date.now() - started) / 1000, missingTiles: missing };
 }

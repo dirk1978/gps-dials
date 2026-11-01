@@ -1,4 +1,7 @@
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { extname } from 'node:path';
+import { srtClipStart } from '../activity/dji-srt.ts';
 import type { TrackPoint } from '../activity/types.ts';
 import { genericVideo } from '../devices/generic-video.ts';
 import { findDevice } from '../devices/index.ts';
@@ -50,7 +53,7 @@ export interface SessionClip {
 export interface SessionResult extends SyncResult {
   path: string;
   /** How the start was decided: this clip alone, this clip guided by the day, the day alone, or by hand. */
-  basis: 'own motion' | 'guided by other clips' | 'clock from other clips' | 'set by hand';
+  basis: 'own motion' | 'guided by other clips' | 'clock from other clips' | 'set by hand' | 'from its own subtitles';
 }
 
 export function clipClockTime(path: string): number {
@@ -111,6 +114,19 @@ export async function syncClip(clip: string, track: TrackPoint[], deviceId?: str
   return (await analyseClip(clip, track, deviceId, upsideDown)).result;
 }
 
+/** Drone subtitles were written frame by frame with the clip, so nothing needs matching. */
+function exactResults(clips: SessionClip[], trackPath?: string): SessionResult[] | null {
+  if (!trackPath || extname(trackPath).toLowerCase() !== '.srt') return null;
+  const stem = trackPath.slice(0, -extname(trackPath).length).toLowerCase();
+  const clip = clips.find(c => c.path.slice(0, -extname(c.path).length).toLowerCase() === stem);
+  const clipStart = clip ? srtClipStart(readFileSync(trackPath, 'utf8')) : null;
+  if (!clip || clipStart == null) return null;
+  return [{
+    path: clip.path, clipStart, clockTime: clipClockTime(clip.path), turnR: 1, speedR: null, lead: 1, runnerUp: null,
+    confident: true, deviceName: 'DJI drone', source: 'subtitle track', motionSeconds: 0, basis: 'from its own subtitles',
+  }];
+}
+
 /**
  * Syncs a whole outing. A camera's clock is wrong by much the same amount all day,
  * so the clips that match well settle the clock, and short or straight clips that
@@ -120,7 +136,10 @@ export async function syncSession(
   clips: SessionClip[],
   track: TrackPoint[],
   onProgress: (done: number, total: number) => void = () => {},
+  trackPath?: string,
 ): Promise<SessionResult[]> {
+  const exact = exactResults(clips, trackPath);
+  if (exact) return exact;
   const analyses: (Analysis & { path: string })[] = [];
   for (const [i, clip] of clips.entries()) {
     analyses.push({ ...(await analyseClip(clip.path, track, undefined, clip.upsideDown)), path: clip.path });

@@ -7,11 +7,13 @@ import '@fontsource/barlow-condensed/latin-700-italic.css';
 import './styles.css';
 import { createCompareView, type CompareApi, type SourceItem } from './compare-view.ts';
 import { createEditor } from './editor.ts';
+import type { ActivityKind } from '../../activity/types.ts';
 import { clipStartFromPin, indexAtTime, nearestIndex, positionAt, type TrackColumns } from '../../sync/timeline.ts';
 import type { SessionResult, SyncResult } from '../../sync/engine.ts';
 import { prepareOverlayData, type OverlayData } from '../../overlay/data.ts';
 import { DISPLAY_FONT, drawFrame, type Ctx } from '../../overlay/draw.ts';
-import { defaultTemplate, normaliseTemplate, type Template } from '../../overlay/template.ts';
+import { layoutFor } from '../../overlay/presets.ts';
+import { normaliseTemplate, type Template } from '../../overlay/template.ts';
 import type { FolderClip, FolderTrack } from '../folder.ts';
 import type { BatchProgress, OverlayBatch } from '../overlay-queue.ts';
 
@@ -36,6 +38,7 @@ interface Track {
   path: string;
   name: string;
   columns: TrackColumns;
+  kind: ActivityKind;
 }
 
 interface SavedSync {
@@ -46,6 +49,9 @@ interface SavedSync {
   confident: boolean;
   /** Turn added by hand, on top of the file's own and any auto-correction. */
   manualRotation?: number;
+  basis?: SessionResult['basis'];
+  /** Where Auto-sync put the clip, kept so a hand correction can still be measured later. */
+  autoStart?: number;
 }
 
 declare global {
@@ -65,16 +71,16 @@ declare global {
       deleteLayout(name: string): Promise<void>;
       loadWorkingCopy(): Promise<Template | null>;
       saveWorkingCopy(template: Template): Promise<void>;
-      importLayout(): Promise<{ template: Template; skipped: string[] } | null>;
-      importLayoutPath(path: string): Promise<{ template: Template; skipped: string[] }>;
+      importLayout(): Promise<Template | null>;
+      importLayoutPath(path: string): Promise<Template>;
       exportLayout(template: Template): Promise<string | null>;
-      exportOverlays(batch: OverlayBatch): Promise<{ done: number; failed: number; cancelled: boolean; outDir: string }>;
+      exportOverlays(batch: OverlayBatch): Promise<{ done: number; failed: number; cancelled: boolean; outDir: string; missingTiles: number }>;
       cancelOverlays(): Promise<void>;
       onOverlayProgress(listener: (progress: BatchProgress) => void): void;
       getMapToken(): Promise<string>;
       setMapToken(token: string): Promise<void>;
       pathForFile(file: File): string;
-      onProxyProgress(listener: (fraction: number) => void): void;
+      onProxyProgress(listener: (fraction: number, clip: string) => void): void;
       onSyncProgress(listener: (done: number, total: number) => void): void;
     };
     app: {
@@ -118,11 +124,19 @@ const sessions = new Map<string, Map<string, SessionResult>>();
 let sessionResults = new Map<string, SessionResult>();
 /** Where Auto-sync put each clip, to measure how far a hand correction moved it. */
 const autoStarts = new Map<string, number>();
+/** Rotation added by hand to each clip, so it survives moving on to another one. */
+const manualRotations = new Map<string, number>();
+const PREVIEW_PANEL_DELAY_MS = 150;
+const MAX_PREVIEW_TILES = 600;
+let mapToken = '';
+let clipRequest = 0;
+/** The clip being opened, which is highlighted straight away while its preview builds. */
+let pendingClip: string | null = null;
 let overlayData: OverlayData | null = null;
 let lastOverlayDraw = 0;
 let exporting = false;
 const exportProgress = new Map<string, BatchProgress>();
-let template: Template = structuredClone(defaultTemplate);
+let template: Template = layoutFor('cycling');
 let mode: Mode = 'sync';
 
 const map = L.map('map', { zoomControl: true, attributionControl: true }).setView([52, 0], 5);
@@ -176,7 +190,8 @@ let layerControl: L.Control.Layers | null = null;
 let currentLayers: L.Layer[] = [];
 
 async function buildMapLayers(): Promise<void> {
-  const layers = mapLayers(await api.getMapToken());
+  mapToken = await api.getMapToken();
+  const layers = mapLayers(mapToken);
   currentLayers.forEach(layer => layer.remove());
   layerControl?.remove();
   currentLayers = Object.values(layers);
@@ -276,7 +291,6 @@ function renderSyncState(detail?: string): void {
   $<HTMLButtonElement>('auto-sync').disabled = !(track && (clip || folderClips.length > 0));
   $('auto-sync').textContent = whole ? 'Auto-sync all clips' : 'Auto-sync';
   $<HTMLButtonElement>('save').disabled = !(linked || sessionResults.size > 0);
-  $('save').textContent = sessionResults.size > 1 ? 'Save all' : 'Save';
   renderApplyShift();
   renderClipLine();
   renderGenerateButton();
@@ -350,7 +364,35 @@ function renderOverlayPreview(): void {
     data: overlayData,
     clipStart: start,
     clipEnd: start + clip.duration,
+    tiles: previewTiles,
+    mapToken,
   }, start + video.currentTime);
+}
+
+/** Map images for the preview, fetched as they come into view. */
+const tileImages = new Map<string, HTMLImageElement>();
+const previewTiles = {
+  image(url: string): HTMLImageElement | null {
+    let image = tileImages.get(url);
+    if (!image) {
+      if (tileImages.size >= MAX_PREVIEW_TILES) tileImages.clear();
+      image = new Image();
+      image.addEventListener('load', scheduleOverlayDraw);
+      image.src = url;
+      tileImages.set(url, image);
+    }
+    return image.complete && image.naturalWidth > 0 ? image : null;
+  },
+};
+
+let overlayDrawQueued = false;
+function scheduleOverlayDraw(): void {
+  if (overlayDrawQueued) return;
+  overlayDrawQueued = true;
+  requestAnimationFrame(() => {
+    overlayDrawQueued = false;
+    renderOverlayPreview();
+  });
 }
 
 /** Lets a layout be designed before the clip is synced, using whatever part of the track its clock points to. */
@@ -448,10 +490,9 @@ async function refreshLayouts(selected = ''): Promise<void> {
   select.value = selected;
 }
 
-async function bringInLayout(imported: { template: Template; skipped: string[] }): Promise<void> {
-  editor.replace(imported.template);
-  const note = imported.skipped.length ? ` Couldn't bring across: ${imported.skipped.join(', ')}.` : '';
-  setStatus(`Opened ${imported.template.name}.${note}`);
+async function bringInLayout(imported: Template): Promise<void> {
+  editor.replace(imported);
+  setStatus(`Opened ${imported.name}.`);
 }
 
 function wireLayoutTools(): void {
@@ -494,7 +535,10 @@ function wireLayoutTools(): void {
     const path = await api.exportLayout(template);
     if (path) setStatus(`Exported to ${path}`);
   });
-  $('layout-reset').addEventListener('click', () => editor.resetToDefault());
+  $('layout-reset').addEventListener('click', () => {
+    editor.replace(layoutFor(track?.kind ?? 'cycling'), true);
+    setStatus(`Using the ${template.name} layout. It will change to suit whatever activity you open.`);
+  });
   $('undo').addEventListener('click', () => editor.undo());
   $('redo').addEventListener('click', () => editor.redo());
 }
@@ -536,9 +580,11 @@ async function generateOverlays(options: { outDir?: string; limit?: number } = {
   const items = [...sessionResults.values()].slice(0, options.limit ?? Infinity).map(r => ({
     clip: r.path,
     clipStart: r.clipStart,
-    extraRotation: r.path === clip?.path ? (rotation() - clip.fileRotation + 360) % 360 : 0,
+    extraRotation: r.path === clip?.path ? (rotation() - clip.fileRotation + 360) % 360 : manualRotations.get(r.path) ?? 0,
   }));
   if (items.length === 0) return;
+  // Generating is the end of the job, so the review it came from shouldn't be lost.
+  await saveAll();
   exporting = true;
   exportProgress.clear();
   renderGenerateButton();
@@ -548,7 +594,8 @@ async function generateOverlays(options: { outDir?: string; limit?: number } = {
     const result = await api.exportOverlays({ items, trackPath: track.path, format, template, outDir: options.outDir });
     const minutes = ((performance.now() - started) / 60000).toFixed(1);
     const failed = result.failed ? `, ${result.failed} failed` : '';
-    setStatus(`${result.cancelled ? 'Cancelled. ' : ''}${result.done} overlays in ${minutes} min${failed}. Saved in ${result.outDir}`);
+    const blank = result.missingTiles ? ` ${result.missingTiles} map images couldn't load, so parts of a map are blank.` : '';
+    setStatus(`${result.cancelled ? 'Cancelled. ' : ''}${result.done} overlays in ${minutes} min${failed}. Saved in ${result.outDir}.${blank}`);
   } catch (error) {
     fail(error);
   } finally {
@@ -612,6 +659,7 @@ const BASIS_TEXT: Record<SessionResult['basis'], string> = {
   'guided by other clips': 'Matched from camera movement and the rest of the day.',
   'own motion': 'Matched from camera movement.',
   'set by hand': 'Set by hand. This changes this clip only.',
+  'from its own subtitles': 'Exact, from the subtitle file recorded with this clip.',
 };
 
 const CLIP_LABELS: Record<SessionResult['basis'], string> = {
@@ -619,6 +667,7 @@ const CLIP_LABELS: Record<SessionResult['basis'], string> = {
   'guided by other clips': 'Matched',
   'own motion': 'Matched',
   'set by hand': 'By hand',
+  'from its own subtitles': 'Exact',
 };
 
 function applySessionResult(r: SessionResult): void {
@@ -634,10 +683,31 @@ async function saveAll(): Promise<void> {
     clipStart: r.clipStart,
     method: r.basis === 'set by hand' ? 'manual' : 'auto',
     confident: r.confident,
-    manualRotation: r.path === clip?.path ? manualRotation : 0,
+    manualRotation: manualRotations.get(r.path) ?? 0,
+    basis: r.basis,
+    autoStart: autoStarts.get(r.path),
   });
   for (const r of sessionResults.values()) await api.saveSync(r.path, saved(r));
-  setStatus(`Sync saved next to ${sessionResults.size} videos`);
+  setStatus(`Sync saved for ${sessionResults.size} videos. It will be there when you reopen this folder.`);
+}
+
+/** Puts saved results back in the list, so reopening a folder carries on where it left off. */
+function restoreSavedResults(): void {
+  for (const c of folderClips) {
+    const saved = c.saved;
+    if (!saved) continue;
+    const results = sessions.get(saved.track) ?? new Map<string, SessionResult>();
+    sessions.set(saved.track, results);
+    results.set(c.path, {
+      clockTime: c.clockTime, turnR: 0, speedR: null, lead: 0, runnerUp: null, deviceName: '', source: '', motionSeconds: 0,
+      path: c.path,
+      clipStart: saved.clipStart,
+      confident: saved.confident,
+      basis: saved.basis ?? (saved.method === 'manual' ? 'set by hand' : 'guided by other clips'),
+    });
+    if (saved.manualRotation) manualRotations.set(c.path, saved.manualRotation);
+    if (saved.autoStart != null) autoStarts.set(c.path, saved.autoStart);
+  }
 }
 
 async function runAutoSync(): Promise<void> {
@@ -650,7 +720,8 @@ async function runAutoSync(): Promise<void> {
   try {
     const seconds = () => ((performance.now() - started) / 1000).toFixed(0);
     const day = clipsForTrack();
-    if (day.length > 1) {
+    // A drone track belongs to one clip exactly, so it takes the same route as a whole folder.
+    if (day.length > 1 || (day.length === 1 && (!clip || /\.srt$/i.test(track.path)))) {
       const results = await api.autoSync({ clips: day.map(c => c.path), trackPath: track.path });
       let kept = 0;
       for (const r of results) {
@@ -669,13 +740,16 @@ async function runAutoSync(): Promise<void> {
       const note = r.confident
         ? 'Matched from camera movement.'
         : 'Likely, but another match was close. Play it and check.';
+      sessionResults.set(clip.path, { ...r, path: clip.path, basis: 'own motion' });
+      autoStarts.set(clip.path, r.clipStart);
       applySync(r.clipStart, 'auto', r.confident, `${note} ${describeOffset(r.clipStart)}`);
+      renderClipList();
       setStatus(`Matched in ${seconds()} s, r=${r.turnR.toFixed(2)}, lead ${r.lead.toFixed(2)}`);
     }
   } catch (error) {
     fail(error);
   } finally {
-    button.textContent = 'Auto-sync';
+    button.textContent = clipsForTrack().length > 1 ? 'Auto-sync all clips' : 'Auto-sync';
     button.disabled = false;
   }
 }
@@ -712,16 +786,22 @@ function renderClipList(): void {
   const items = list.map(c => {
     const item = document.createElement('li');
     const button = document.createElement('button');
-    const name = document.createElement('span');
-    name.textContent = new Date(c.clockTime * 1000).toISOString().slice(11, 19);
-    name.title = c.name;
-    const state = document.createElement('span');
     const r = sessionResults.get(c.path);
+    // Once synced this is the corrected time, not what the camera's clock said.
+    const start = new Date((r?.clipStart ?? c.clockTime) * 1000).toLocaleTimeString('en-GB');
+    const name = document.createElement('span');
+    name.className = 'clip-start';
+    name.textContent = start;
+    const length = document.createElement('span');
+    length.className = 'clip-length';
+    length.textContent = clockText(c.duration);
+    const state = document.createElement('span');
     const estimated = r?.basis === 'clock from other clips';
     state.className = `clip-state ${r ? (estimated || !r.confident ? 'warn' : r.basis === 'set by hand' ? '' : 'good') : ''}`;
-    state.textContent = r ? (r.confident ? CLIP_LABELS[r.basis] : 'Check') : clockText(c.duration);
-    button.append(name, state);
-    if (c.path === clip?.path) button.setAttribute('aria-current', 'true');
+    state.textContent = r ? (r.confident ? CLIP_LABELS[r.basis] : 'Check') : 'Not synced';
+    button.title = `${c.name}\nStarts ${start}${r ? '' : " by the camera's clock"}, runs for ${clockText(c.duration)}`;
+    button.append(name, length, state);
+    if (c.path === (pendingClip ?? clip?.path)) button.setAttribute('aria-current', 'true');
     button.addEventListener('click', () => { void selectClip(c.path); });
     item.append(button);
     return item;
@@ -731,7 +811,7 @@ function renderClipList(): void {
   const all = [...sessionResults.values()];
   const count = (basis: SessionResult['basis'][]) => all.filter(r => basis.includes(r.basis)).length;
   $('clip-summary').textContent = all.length
-    ? `${count(['own motion', 'guided by other clips'])} matched, ${count(['clock from other clips'])} estimated, ${count(['set by hand'])} by hand. Fixing a clip changes that clip only.`
+    ? `${count(['own motion', 'guided by other clips', 'from its own subtitles'])} matched, ${count(['clock from other clips'])} estimated, ${count(['set by hand'])} by hand. Fixing a clip changes that clip only.`
     : track ? 'Not synced with this GPS source yet. Press Auto-sync all clips.' : '';
 }
 
@@ -752,6 +832,8 @@ async function openFolder(dir: string): Promise<void> {
     folderTracks = found.tracks;
     sessions.clear();
     autoStarts.clear();
+    manualRotations.clear();
+    restoreSavedResults();
     if (folderTracks.length === 0) {
       setStatus('No FIT or SRT tracks found in that folder.');
       return;
@@ -767,9 +849,10 @@ async function openFolder(dir: string): Promise<void> {
     $('track-picker').hidden = false;
     $('open-track').hidden = true;
     $('track-name').hidden = true;
-    $('clip-panel').hidden = false;
     document.body.classList.add('has-folder');
     await loadTrack(folderTracks[0].path);
+    // Puts every panel right for the current tab, as the folder may be opened from any of them.
+    setMode(mode);
     map.invalidateSize();
     renderClipList();
     renderSyncState();
@@ -802,6 +885,8 @@ async function loadTrack(path: string): Promise<void> {
   overlayData = prepareOverlayData(columns, template.gradientSpan);
   clipStart = null;
   confident = false;
+  if (template.auto && template.name !== layoutFor(track.kind).name) editor.replace(layoutFor(track.kind), true);
+  else editor.refresh();
   const points = columns.t.map((_, i) => [columns.lat[i], columns.lon[i]] as L.LatLngTuple);
   line.setLatLngs(points);
   map.invalidateSize();
@@ -827,7 +912,7 @@ function placeTrackAtClipClock(): void {
 
 function applySaved(): void {
   const saved = clip?.saved;
-  if (saved) {
+  if (saved && !manualRotations.has(clip!.path)) {
     manualRotation = saved.manualRotation ?? 0;
     renderRotation();
   }
@@ -835,14 +920,43 @@ function applySaved(): void {
   applySync(saved.clipStart, saved.method, saved.confident, `Saved sync loaded. ${describeOffset(saved.clipStart)}`);
 }
 
+function showPreviewStatus(name: string, fraction: number | null): void {
+  $('preview-status').hidden = false;
+  $('preview-name').textContent = name;
+  $('preview-percent').textContent = fraction == null ? '' : `${(fraction * 100).toFixed(0)}%`;
+  $('preview-bar').style.width = `${(fraction ?? 0) * 100}%`;
+}
+
 async function loadClip(path: string): Promise<void> {
-  setStatus('Preparing video');
-  const loaded = await api.loadClip(path);
+  // A later click wins, so a slow preview finishing late can't replace the clip now chosen.
+  const request = ++clipRequest;
+  pendingClip = path;
+  renderClipList();
+  const name = path.split(/[\\/]/).pop()!;
+  // Clips with a preview already open at once, so don't flash the panel for those.
+  const timer = setTimeout(() => {
+    if (request === clipRequest) showPreviewStatus(name, null);
+  }, PREVIEW_PANEL_DELAY_MS);
+  let loaded: Clip;
+  try {
+    loaded = await api.loadClip(path);
+  } catch (error) {
+    if (request === clipRequest) {
+      pendingClip = null;
+      $('preview-status').hidden = true;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+  if (request !== clipRequest) return;
+  pendingClip = null;
+  $('preview-status').hidden = true;
   const keepPlaying = !video.paused;
   clip = loaded;
   clipStart = null;
   confident = false;
-  manualRotation = 0;
+  manualRotation = manualRotations.get(path) ?? 0;
   $('clip-name').textContent = loaded.name;
   $('video-empty').hidden = true;
   video.src = loaded.url;
@@ -888,6 +1002,7 @@ $('map-settings').addEventListener('click', async () => {
   $<HTMLInputElement>('mapbox-token').value = await api.getMapToken();
   $('settings-error').textContent = '';
   $<HTMLDialogElement>('settings-dialog').showModal();
+  $('mapbox-token').focus();
 });
 $('settings-save').addEventListener('click', async event => {
   event.preventDefault();
@@ -901,6 +1016,7 @@ $('settings-save').addEventListener('click', async event => {
 });
 $('rotate').addEventListener('click', () => {
   manualRotation = (manualRotation + 90) % 360;
+  if (clip) manualRotations.set(clip.path, manualRotation);
   renderRotation();
 });
 $('auto-rotate').addEventListener('change', renderRotation);
@@ -986,7 +1102,9 @@ document.addEventListener('drop', event => {
   void loadPaths(Array.from(event.dataTransfer?.files ?? []).map(f => api.pathForFile(f)));
 });
 
-api.onProxyProgress(fraction => setStatus(`Preparing video ${(fraction * 100).toFixed(0)}%`));
+api.onProxyProgress((fraction, path) => {
+  if (path === pendingClip) showPreviewStatus(path.split(/[\\/]/).pop()!, fraction);
+});
 api.onSyncProgress((done, total) => setStatus(`Matching clip ${done} of ${total}`));
 api.onOverlayProgress(progress => {
   exportProgress.set(progress.clip, progress);
@@ -1015,8 +1133,8 @@ wireLayoutTools();
 void refreshLayouts();
 void api.loadWorkingCopy().then(saved => {
   if (!saved) return;
-  template = normaliseTemplate(saved);
-  editor.replace(template);
+  // Restoring what was there isn't an edit, so a layout on auto stays on auto.
+  editor.replace(normaliseTemplate(saved), true);
 });
 void buildMapLayers();
 // Canvas text won't load a web font by itself, and would draw the first dials in a fallback.

@@ -20,17 +20,19 @@ const GAUGES: DisplayId[] = ['dial', 'arc'];
 const SCALED: DisplayId[] = ['dial', 'arc', 'bar', 'graph'];
 const READOUTS: DisplayId[] = ['dial', 'arc', 'bar', 'counter', 'graph'];
 const LINES: DisplayId[] = ['graph', 'profile'];
-const TRACKS: DisplayId[] = ['route', 'profile'];
+const TRACKS: DisplayId[] = ['route', 'map', 'profile'];
+const ROUTES: DisplayId[] = ['route', 'map'];
 
 /** Add an option here and the inspector shows it. Everything on the panel comes from this list. */
 export const FIELDS: Field[] = [
+  { section: 'Look', key: 'hideWhenNoData', label: 'Hide if the file has no data', kind: 'toggle' },
   { section: 'Look', key: 'opacity', label: 'Opacity', kind: 'range', min: 0, max: 1, step: 0.01 },
   { section: 'Look', key: 'color', label: 'Main colour', kind: 'color' },
-  { section: 'Look', key: 'color2', label: 'Gradient end', kind: 'color', only: ['bar', 'graph', 'route', 'profile'] },
+  { section: 'Look', key: 'color2', label: 'Gradient end', kind: 'color', only: ['bar', 'graph', 'route', 'map', 'profile'] },
   { section: 'Look', key: 'textColor', label: 'Text', kind: 'color' },
   { section: 'Look', key: 'mutedColor', label: 'Labels', kind: 'color', only: READOUTS },
-  { section: 'Look', key: 'trackColor', label: 'Track colour', kind: 'color', only: [...GAUGES, 'bar', 'route', 'profile'] },
-  { section: 'Look', key: 'trackOpacity', label: 'Track opacity', kind: 'range', min: 0, max: 1, step: 0.01, only: [...GAUGES, 'bar', 'route', 'profile'] },
+  { section: 'Look', key: 'trackColor', label: 'Track colour', kind: 'color', only: [...GAUGES, 'bar', 'route', 'map', 'profile'] },
+  { section: 'Look', key: 'trackOpacity', label: 'Track opacity', kind: 'range', min: 0, max: 1, step: 0.01, only: [...GAUGES, 'bar', 'route', 'map', 'profile'] },
   { section: 'Look', key: 'shadow', label: 'Shadow', kind: 'range', min: 0, max: 30, step: 1 },
   { section: 'Look', key: 'shadowColor', label: 'Shadow colour', kind: 'color' },
 
@@ -89,8 +91,25 @@ export const FIELDS: Field[] = [
   { section: 'Graph', key: 'lineWidth', label: 'Line width', kind: 'range', min: 0.5, max: 12, step: 0.5, only: ['graph'] },
   { section: 'Graph', key: 'showMarker', label: 'Show current point', kind: 'toggle', only: LINES },
 
-  { section: 'Track', key: 'routeWidth', label: 'Line width', kind: 'range', min: 0.5, max: 14, step: 0.5, only: ['route'] },
-  { section: 'Track', key: 'dotSize', label: 'Marker size', kind: 'range', min: 1, max: 30, step: 0.5, only: ['route', 'graph'] },
+  { section: 'Map', key: 'mapProvider', label: 'Map style', kind: 'select', only: ['map'], hint: 'Mapbox styles need your token in Map settings. Check your provider\'s terms before publishing its maps in video.' },
+  { section: 'Map', key: 'mapCustomUrl', label: 'Tile address', kind: 'text', only: ['map'], hint: 'For "Your own tile address". Use {z}, {x} and {y}, and include any key.' },
+  { section: 'Map', key: 'mapCredit', label: 'Credit text', kind: 'text', only: ['map'], hint: 'The credit your tile provider requires.' },
+  { section: 'Map', key: 'mapMode', label: 'Framing', kind: 'select', options: [['follow', 'Follow me'], ['fitClip', 'Fit this clip'], ['fitRide', 'Fit the whole activity']], only: ['map'] },
+  { section: 'Map', key: 'mapZoom', label: 'Zoom', kind: 'range', min: 5, max: 19, step: 0.25, only: ['map'], hint: 'Used when following you.' },
+  { section: 'Map', key: 'mapRotate', label: 'Turn with direction of travel', kind: 'toggle', only: ['map'], hint: 'Used when following you.' },
+  { section: 'Map', key: 'mapShape', label: 'Shape', kind: 'select', options: [['rounded', 'Rounded'], ['square', 'Square'], ['circle', 'Circle']], only: ['map'] },
+  { section: 'Map', key: 'mapOpacity', label: 'Map opacity', kind: 'range', min: 0, max: 1, step: 0.01, only: ['map'] },
+  { section: 'Map', key: 'mapDarken', label: 'Darken', kind: 'range', min: 0, max: 1, step: 0.01, only: ['map'] },
+  { section: 'Map', key: 'mapSaturation', label: 'Colour', kind: 'range', min: 0, max: 2, step: 0.05, only: ['map'] },
+  { section: 'Map', key: 'mapBrightness', label: 'Brightness', kind: 'range', min: 0.2, max: 2, step: 0.05, only: ['map'] },
+  { section: 'Map', key: 'mapContrast', label: 'Contrast', kind: 'range', min: 0.2, max: 2, step: 0.05, only: ['map'] },
+
+  { section: 'Track', key: 'routeWidth', label: 'Line width', kind: 'range', min: 0.5, max: 24, step: 0.5, only: ROUTES },
+  { section: 'Track', key: 'routeOutlineColor', label: 'Outline colour', kind: 'color', only: ROUTES },
+  { section: 'Track', key: 'routeOutlineWidth', label: 'Outline width', kind: 'range', min: 0, max: 10, step: 0.5, only: ROUTES },
+  { section: 'Track', key: 'markerStyle', label: 'Marker', kind: 'select', options: [['dot', 'Dot'], ['ring', 'Ring'], ['arrow', 'Arrow']], only: ROUTES },
+  { section: 'Track', key: 'markerColor', label: 'Marker colour', kind: 'color', only: ROUTES },
+  { section: 'Track', key: 'dotSize', label: 'Marker size', kind: 'range', min: 1, max: 30, step: 0.5, only: [...ROUTES, 'graph'] },
   { section: 'Track', key: 'showRemaining', label: 'Show the part still to come', kind: 'toggle', only: TRACKS },
   { section: 'Track', key: 'fullRide', label: 'Whole activity', kind: 'toggle', only: TRACKS, hint: 'Off shows only the road around this clip.' },
   { section: 'Track', key: 'zoomToClip', label: 'Zoom to this clip', kind: 'toggle', only: ['route'] },

@@ -12,6 +12,7 @@ interface Job {
   outPath: string;
   extraRotation: number;
   template: Template;
+  mapToken: string;
 }
 
 /** Renders one overlay in its own process, so several can run side by side. */
@@ -24,13 +25,13 @@ port.on('message', async ({ data }: { data: Job | 'cancel' }) => {
   }
   try {
     let lastSent = 0;
-    await renderOverlay({ ...data, track: toColumns(readActivity(data.trackPath)) }, fraction => {
+    const stats = await renderOverlay({ ...data, track: toColumns(readActivity(data.trackPath)) }, fraction => {
       if (fraction - lastSent >= 0.02) {
         lastSent = fraction;
         port.postMessage({ progress: fraction });
       }
     }, cancel.signal);
-    port.postMessage({ done: true });
+    port.postMessage({ done: true, missingTiles: stats.missingTiles });
   } catch (error) {
     port.postMessage({ failed: String((error as Error)?.message ?? error) });
   }

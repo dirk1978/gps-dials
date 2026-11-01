@@ -2,10 +2,10 @@ import { execFileSync } from 'node:child_process';
 import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, delimiter, join } from 'node:path';
 import { Readable } from 'node:stream';
-import { BrowserWindow, app, dialog, ipcMain, protocol, safeStorage, session, utilityProcess } from 'electron';
+import { BrowserWindow, app, dialog, ipcMain, protocol, safeStorage, session, shell, utilityProcess } from 'electron';
 import { COMBINED_EXTENSION, writeCombined } from '../activity/combined.ts';
 import { toColumns } from '../activity/columns.ts';
-import { readActivity } from '../activity/index.ts';
+import { activityKind, readActivity } from '../activity/index.ts';
 import { clipClockTime } from '../sync/engine.ts';
 import { displayRotation, isUpsideDown } from '../sync/orientation.ts';
 import {
@@ -88,14 +88,14 @@ function registerIpc(): void {
   ipcMain.handle('load-track', (_event, path: string) => {
     const points = readActivity(path);
     if (points.length < 2) throw new Error('That file has no usable GPS track.');
-    return { path, name: basename(path), columns: toColumns(points) };
+    return { path, name: basename(path), columns: toColumns(points), kind: activityKind(path) };
   });
 
   ipcMain.handle('load-clip', async (event, clip: string) => {
     const { duration, fps } = probe(clip);
     const started = Date.now();
     const proxy = await ensureProxy(clip, join(app.getPath('userData'), 'proxies'), duration, fraction => {
-      event.sender.send('proxy-progress', fraction);
+      event.sender.send('proxy-progress', fraction, clip);
     });
     const id = `p${proxies.size}`;
     proxies.set(id, proxy.path);
@@ -159,7 +159,7 @@ function registerIpc(): void {
   ipcMain.handle('import-layout', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog(window, {
       properties: ['openFile'],
-      filters: [{ name: 'Layouts and Telemetry Overlay templates', extensions: ['json', 'toptrn', 'toproj'] }],
+      filters: [{ name: 'GPS Dials layout', extensions: ['json'] }],
     });
     return canceled ? null : importLayout(filePaths[0]);
   });
@@ -175,7 +175,7 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('export-overlays', (event, batch: OverlayBatch) => (
-    renderBatch(join(__dirname, 'overlay-worker.cjs'), batch, progress => event.sender.send('overlay-progress', progress))
+    renderBatch(join(__dirname, 'overlay-worker.cjs'), { ...batch, mapToken: readMapToken() }, progress => event.sender.send('overlay-progress', progress))
   ));
   ipcMain.handle('cancel-overlays', () => cancelOverlays());
 
@@ -204,6 +204,8 @@ function registerIpc(): void {
 }
 
 app.whenReady().then(async () => {
+  process.env.GPS_DIALS_TILE_CACHE = join(app.getPath('userData'), 'map-tiles');
+  process.env.GPS_DIALS_VERSION = app.getVersion();
   protocol.handle(MEDIA_SCHEME, serveProxy);
 
   // OpenStreetMap's tile policy asks apps to identify themselves.
@@ -223,6 +225,11 @@ app.whenReady().then(async () => {
     title: 'gps-dials',
     autoHideMenuBar: true,
     webPreferences: { preload: join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true },
+  });
+  // Links open in the person's own browser, and only ever to the sites the app links to.
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('https://www.mapbox.com/') || url.startsWith('https://account.mapbox.com/')) void shell.openExternal(url);
+    return { action: 'deny' };
   });
   await window.loadFile(join(__dirname, 'index.html'));
 });

@@ -4,6 +4,10 @@ import type { Style, Widget } from '../template.ts';
 
 export type Ctx = CanvasRenderingContext2D;
 
+export interface TileSource {
+  image(url: string): CanvasImageSource | null;
+}
+
 export interface Box {
   x: number;
   y: number;
@@ -31,6 +35,9 @@ export interface DrawEnv {
   unit: number;
   upColor: string;
   downColor: string;
+  /** Map images ready to draw. Missing ones are left blank, and the track still shows. */
+  tiles?: TileSource;
+  mapToken: string;
   /** A channel's value at another time, in the widget's unit, for graphs. */
   valueAt(time: number): number | null;
 }

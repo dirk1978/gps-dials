@@ -2,7 +2,10 @@ import { CHANNELS, channelDef, type ChannelId } from '../../overlay/channels.ts'
 import { DEFAULT_GRADIENT_SPAN_M } from '../../overlay/data.ts';
 import { DISPLAYS, displayDef } from '../../overlay/displays/index.ts';
 import { fieldsFor, type Field } from '../../overlay/fields.ts';
-import { FONTS, THEMES, defaultTemplate, newId, newWidget, resolveStyle, type DisplayId, type Style, type Template, type Theme, type Widget } from '../../overlay/template.ts';
+import { MAP_PROVIDERS } from '../../overlay/map-view.ts';
+import { PRESETS } from '../../overlay/presets.ts';
+import { DEFAULT_RIDER, type Rider } from '../../overlay/zones.ts';
+import { FONTS, THEMES, newId, newWidget, resolveStyle, type DisplayId, type Style, type Template, type Theme, type Widget } from '../../overlay/template.ts';
 
 export interface EditorHost {
   template(): Template;
@@ -63,7 +66,9 @@ export function createEditor(host: EditorHost) {
   const current = () => host.template().widgets.find(w => w.id === selected) ?? null;
 
   /** Records the change for undo. Called once a drag or edit has finished. */
-  function commit(): void {
+  function commit(keepAuto: boolean | Event = false): void {
+    // Once someone has made a layout their own, opening another activity must not replace it.
+    if (keepAuto !== true && JSON.stringify(host.template()) !== saved) host.template().auto = false;
     const now = JSON.stringify(host.template());
     if (now === saved) return;
     past.push(saved);
@@ -281,7 +286,9 @@ export function createEditor(host: EditorHost) {
       const row = el('li', { className: w.id === selected ? 'layer selected' : 'layer' });
       const name = el('button', { className: 'layer-name', title: 'Select', textContent: w.name });
       name.addEventListener('click', () => select(w.id));
-      const kind = el('span', { className: 'layer-kind', textContent: displayDef(w.display).label });
+      const data = host.channelsWithData();
+      const empty = data && !displayDef(w.display).usesTrack && !data.has(w.channel);
+      const kind = el('span', { className: 'layer-kind', textContent: empty ? 'No data in this file' : displayDef(w.display).label });
       const eye = el('button', { className: 'icon', title: w.hidden ? 'Show' : 'Hide', textContent: w.hidden ? 'Off' : 'On' });
       eye.addEventListener('click', () => {
         w.hidden = !w.hidden;
@@ -370,13 +377,15 @@ export function createEditor(host: EditorHost) {
   }
 
   function styleField(widget: Widget, field: Field): HTMLElement {
-    const resolved = resolveStyle(widget, host.template().theme);
+    const resolved = resolveStyle(widget, host.template().theme, host.template().rider);
     const set = (v: unknown) => {
       (widget.style as Record<string, unknown>)[field.key] = v;
       host.redraw();
     };
-    const choices = field.key === 'font' ? FONTS.map(f => [f, f] as [string, string]) : field.options;
-    const input = control(field.kind, resolved[field.key], { min: field.min, max: field.max, step: field.step, choices }, set, commit);
+    const choices = field.key === 'font'
+      ? FONTS.map(f => [f, f] as [string, string])
+      : field.key === 'mapProvider' ? MAP_PROVIDERS.map(p => [p.id, p.label] as [string, string]) : field.options;
+    const input = control(field.kind, resolved[field.key], { min: field.min, max: field.max, step: field.step, choices }, set, () => commit());
     const reset = field.key in widget.style ? () => {
       delete widget.style[field.key];
       host.redraw();
@@ -398,21 +407,26 @@ export function createEditor(host: EditorHost) {
 
   function zonesEditor(widget: Widget): HTMLElement {
     const list = el('div', { className: 'zones' });
-    const zones = () => (widget.style.zones ??= []);
+    // Starts from the zones in use, so a small change doesn't mean rebuilding the whole list.
+    const zones = () => {
+      if (!widget.style.zones?.length) widget.style.zones = structuredClone(resolveStyle(widget, host.template().theme, host.template().rider).zones);
+      return widget.style.zones;
+    };
     const draw = () => {
-      list.replaceChildren(...zones().map((zone, i) => {
+      const shown = widget.style.zones?.length ? widget.style.zones : resolveStyle(widget, host.template().theme, host.template().rider).zones;
+      list.replaceChildren(...shown.map((zone, i) => {
         const upTo = el('input', { type: 'number', title: 'Up to this value', value: String(zone.upTo) });
         upTo.addEventListener('input', () => {
-          zone.upTo = Number(upTo.value);
+          zones()[i].upTo = Number(upTo.value);
           host.redraw();
         });
-        upTo.addEventListener('change', commit);
+        upTo.addEventListener('change', () => commit());
         const color = el('input', { type: 'color', value: zone.color });
         color.addEventListener('input', () => {
-          zone.color = color.value;
+          zones()[i].color = color.value;
           host.redraw();
         });
-        color.addEventListener('change', commit);
+        color.addEventListener('change', () => commit());
         const drop = el('button', { className: 'icon', textContent: '×', title: 'Remove this zone', type: 'button' });
         drop.addEventListener('click', () => {
           zones().splice(i, 1);
@@ -535,6 +549,16 @@ export function createEditor(host: EditorHost) {
     );
   }
 
+  function riderField(key: keyof Rider, label: string, hint: string): HTMLElement {
+    const t = host.template();
+    const input = control('number', (t.rider ?? DEFAULT_RIDER)[key], {}, v => {
+      if (!(Number(v) > 0)) return;
+      t.rider = { ...DEFAULT_RIDER, ...t.rider, [key]: Number(v) };
+      host.redraw();
+    }, () => commit(true));
+    return row(label, input, undefined, hint);
+  }
+
   function themeInspector(): void {
     const t = host.template();
     const picker = control('select', THEMES.some(x => x.name === t.theme.name) ? t.theme.name : '', {
@@ -565,6 +589,10 @@ export function createEditor(host: EditorHost) {
       el('p', { className: 'hint', textContent: 'Select a widget on the picture to change it. The theme sets everything a widget hasn\'t changed itself.' }),
       section('Theme', rows),
       section('Data', [row('Gradient over (m)', span, undefined, 'Shorter reacts faster but is noisier. Longer is steadier but flattens short ramps.')]),
+      section('You', [
+        riderField('maxHeartRate', 'Max heart rate', 'Heart rate zones are percentages of this.'),
+        riderField('ftp', 'FTP (watts)', 'Power zones are percentages of this.'),
+      ]),
     );
   }
 
@@ -580,6 +608,26 @@ export function createEditor(host: EditorHost) {
     renderInspector();
     renderSelection();
   }
+
+  document.getElementById('preset-grid')!.replaceChildren(...PRESETS.map(preset => {
+    const thumb = el('span', { className: 'preset-thumb' }, ...preset.widgets.map(w => {
+      const round = w.display === 'dial' || w.display === 'arc' || w.style.mapShape === 'circle';
+      const box = el('span', { className: `${round ? 'round ' : ''}${w.display === 'map' ? 'map' : ''}`.trim() });
+      Object.assign(box.style, { left: `${w.x * 100}%`, top: `${w.y * 100}%`, width: `${w.width * 100}%`, height: `${w.height * 100}%` });
+      return box;
+    }));
+    const button = el('button', { className: 'preset', title: `Start from ${preset.name}. You can undo this.`, type: 'button' }, thumb, preset.name);
+    button.addEventListener('click', () => {
+      const copy = structuredClone(preset);
+      for (const w of copy.widgets) w.name ||= channelDef(w.channel).label;
+      host.setTemplate(copy);
+      selected = null;
+      commit();
+      refresh();
+      host.status(`Using ${preset.name}. Change anything you like.`);
+    });
+    return button;
+  }));
 
   addData.replaceChildren(...CHANNELS.map(c => el('option', { value: c.id, textContent: c.label })));
   addDisplay.replaceChildren(...DISPLAYS.map(d => el('option', { value: d.id, textContent: d.label })));
@@ -638,15 +686,12 @@ export function createEditor(host: EditorHost) {
     redo,
     select,
     /** Takes in a different layout, as one step that can be undone. */
-    replace(template: Template) {
+    replace(template: Template, keepAuto = false) {
       host.setTemplate(template);
       selected = null;
-      commit();
+      commit(keepAuto);
       refresh();
     },
     selectedId: () => selected,
-    resetToDefault() {
-      this.replace(structuredClone(defaultTemplate));
-    },
   };
 }

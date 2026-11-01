@@ -34,6 +34,18 @@ test('reads a channel in the chosen unit', () => {
   assert.ok(Math.abs(readChannel(data, channelDef('altitude'), 'm', 1010.5, clip)! - 110.5) < 0.01);
 });
 
+test('works out speed from positions when a track has none, as drones do', () => {
+  const data = prepareOverlayData({ ...track, speed: new Array(21).fill(null) });
+  assert.ok(Math.abs(seriesValue(data, 'speed', 1010)! - 11.1) < 0.2);
+  assert.equal(data.available.has('speed'), true);
+});
+
+test('measures height and distance from the start', () => {
+  const data = prepareOverlayData(track);
+  assert.equal(seriesValue(data, 'height', 1010), 10);
+  assert.ok(Math.abs(seriesValue(data, 'homeDistance', 1020)! - 222.4) < 1);
+});
+
 test('adds up climbing without counting noise', () => {
   const noisy: TrackColumns = { ...track, altitude: [100, 101, 100, 101, 100, 103, 102, 106, ...new Array(13).fill(106)] };
   assert.equal(prepareOverlayData(noisy).series.ascent!.at(-1), 7);

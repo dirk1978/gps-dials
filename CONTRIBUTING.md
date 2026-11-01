@@ -30,6 +30,14 @@ Add a reader in `src/activity/` that returns `TrackPoint[]`, then list it in [sr
 
 Each display type is one file in `src/overlay/displays/`, using [counter.ts](src/overlay/displays/counter.ts) as the shortest example. List it in [index.ts](src/overlay/displays/index.ts) and every kind of data can use it. Its options go in [fields.ts](src/overlay/fields.ts), and the panel in the app builds itself from that list.
 
+## Add an activity
+
+Skiing, sailing, paragliding, anything else: each activity is one file in `src/activities/`, with [flying.ts](src/activities/flying.ts) as a short example. It says which FIT sport numbers or file types mean this activity, and what layout to start with, using units that suit it. List it in [index.ts](src/activities/index.ts). Opening a matching recording then picks that layout automatically, and it joins the presets.
+
+## Add a map style or preset
+
+Map styles are a list in [map-view.ts](src/overlay/map-view.ts), and starting layouts are a list in [presets.ts](src/overlay/presets.ts). Presets must be original: don't copy artwork or designs from other products, including discontinued ones.
+
 ## Add a new kind of data
 
 Add it to the list in [channels.ts](src/overlay/channels.ts), with its units and default scale, and work out its values in [data.ts](src/overlay/data.ts). Every display type can then show it.

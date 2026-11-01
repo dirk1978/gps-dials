@@ -12,6 +12,7 @@ export const DEFAULT_GRADIENT_SPAN_M = 100;
 const ASCENT_THRESHOLD_M = 2;
 const VERTICAL_SPAN_S = 30;
 const HEADING_SPAN_M = 15;
+const DERIVED_SPEED_SPAN_S = 2;
 
 export interface OverlayData {
   track: TrackColumns;
@@ -92,20 +93,38 @@ function headingSeries(track: TrackColumns, distance: number[]): (number | null)
   return out;
 }
 
+/** For recordings without a speed sensor, such as a drone's subtitle track. */
+function speedFromPositions(track: TrackColumns, distance: number[]): (number | null)[] {
+  const n = track.t.length;
+  const out = new Array<number | null>(n).fill(null);
+  let from = 0;
+  for (let i = 1; i < n; i++) {
+    while (from < i - 1 && track.t[i] - track.t[from] > DERIVED_SPEED_SPAN_S) from++;
+    const span = track.t[i] - track.t[from];
+    if (span > 0) out[i] = (distance[i] - distance[from]) / span;
+  }
+  out[0] = out[1] ?? null;
+  return out;
+}
+
 export function prepareOverlayData(track: TrackColumns, gradientSpan = DEFAULT_GRADIENT_SPAN_M): OverlayData {
   const n = track.t.length;
   const distance = new Array<number>(n).fill(0);
   for (let i = 1; i < n; i++) distance[i] = distance[i - 1] + metresBetween(track, i - 1, i);
   const total = distance[n - 1];
+  const speed = track.speed.some(v => v != null) ? track.speed : speedFromPositions(track, distance);
+  const startAltitude = track.altitude.find(v => v != null) ?? 0;
 
   const series: OverlayData['series'] = {
-    speed: track.speed,
-    pace: track.speed.map(v => (v != null && v > 0.5 ? 1 / v : null)),
+    speed,
+    pace: speed.map(v => (v != null && v > 0.5 ? 1 / v : null)),
     heartRate: track.heartRate,
     cadence: track.cadence,
     power: track.power,
     temperature: track.temperature,
     altitude: track.altitude,
+    height: track.altitude.map(a => (a == null ? null : a - startAltitude)),
+    homeDistance: track.t.map((_, i) => metresBetween(track, 0, i)),
     gradient: gradientSeries(track, distance, gradientSpan),
     ascent: ascentSeries(track),
     verticalSpeed: verticalSpeedSeries(track),

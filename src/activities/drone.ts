@@ -1,0 +1,17 @@
+import { BOTTOM_DIAL, DIAL_H, DIAL_W, LEFT, MAP_H, MAP_W, RIGHT_DIAL, layout } from './layout.ts';
+import type { ActivityDef } from './types.ts';
+
+export const drone: ActivityDef = {
+  id: 'drone',
+  name: 'Drone',
+  extensions: ['.srt'],
+  layout: layout('Drone', [
+    ['distance', 'map', LEFT, 0.025, MAP_W, MAP_H, { mapMode: 'fitClip', fullRide: false, markerStyle: 'arrow' }],
+    ['height', 'dial', RIGHT_DIAL, 0.025, DIAL_W, DIAL_H],
+    ['speed', 'dial', RIGHT_DIAL, BOTTOM_DIAL, DIAL_W, DIAL_H],
+    ['homeDistance', 'counter', LEFT, 0.84, 0.15, 0.135],
+    ['heading', 'counter', 0.172, 0.84, 0.1, 0.135],
+    ['clipTime', 'counter', 0.282, 0.84, 0.11, 0.135],
+    ['height', 'graph', 0.402, 0.79, 0.42, 0.185, { windowSeconds: 60, autoRange: true, labelText: 'Height' }],
+  ]),
+};

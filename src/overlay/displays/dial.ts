@@ -1,5 +1,6 @@
 import { autoRange, drawText, fraction, rgba, setFont, spacedLabel, valueColor, type DisplayDef, type DrawEnv } from './common.ts';
 
+const ZONE_TRACK_OPACITY = 0.38;
 const toRad = (degrees: number) => (degrees * Math.PI) / 180;
 
 function drawGauge(env: DrawEnv, needle: boolean): void {
@@ -27,7 +28,20 @@ function drawGauge(env: DrawEnv, needle: boolean): void {
 
   ctx.lineCap = style.roundEnds ? 'round' : 'butt';
   ctx.lineWidth = R * style.thickness;
-  if (style.trackOpacity > 0) {
+  if (style.useZones && style.zones.length > 0) {
+    // The whole scale shows its zones faintly, so you can see what's coming as well as where you are.
+    let from = style.min;
+    for (const zone of style.zones) {
+      const to = Math.min(zone.upTo, style.max);
+      if (to > from) {
+        ctx.strokeStyle = rgba(zone.color, ZONE_TRACK_OPACITY);
+        ctx.beginPath();
+        ctx.arc(cx, cy, band, angleOf(from), angleOf(to), style.reverse);
+        ctx.stroke();
+        from = to;
+      }
+    }
+  } else if (style.trackOpacity > 0) {
     ctx.strokeStyle = rgba(style.trackColor, style.trackOpacity);
     ctx.beginPath();
     ctx.arc(cx, cy, band, start, start + sweep, style.reverse);

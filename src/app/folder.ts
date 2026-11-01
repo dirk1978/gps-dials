@@ -4,6 +4,7 @@ import { basename, extname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { parseFitActivity } from '../activity/fit.ts';
 import { readActivity } from '../activity/index.ts';
+import type { SessionResult } from '../sync/engine.ts';
 
 const run = promisify(execFile);
 const MAX_DEPTH = 3;
@@ -17,6 +18,18 @@ export interface FolderClip {
   name: string;
   clockTime: number;
   duration: number;
+  /** The sync saved beside this clip last time, if any. */
+  saved?: SavedClipSync;
+}
+
+export interface SavedClipSync {
+  track: string;
+  clipStart: number;
+  method: 'auto' | 'manual';
+  confident: boolean;
+  manualRotation?: number;
+  basis?: SessionResult['basis'];
+  autoStart?: number;
 }
 
 export interface FolderTrack {
@@ -45,9 +58,19 @@ async function readClip(path: string): Promise<FolderClip | null> {
     const { stdout } = await run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration:format_tags=creation_time', '-of', 'json', path]);
     const { format } = JSON.parse(stdout);
     const clockTime = Date.parse(format.tags?.creation_time) / 1000;
-    return Number.isNaN(clockTime) ? null : { path, name: basename(path), clockTime, duration: Number(format.duration) };
+    if (Number.isNaN(clockTime)) return null;
+    return { path, name: basename(path), clockTime, duration: Number(format.duration), saved: readSaved(path) };
   } catch {
     return null;
+  }
+}
+
+function readSaved(clip: string): SavedClipSync | undefined {
+  try {
+    const saved = JSON.parse(readFileSync(`${clip}.gpsdials.json`, 'utf8')) as SavedClipSync;
+    return typeof saved.clipStart === 'number' && typeof saved.track === 'string' ? saved : undefined;
+  } catch {
+    return undefined;
   }
 }
 

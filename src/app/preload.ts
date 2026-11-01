@@ -28,8 +28,8 @@ contextBridge.exposeInMainWorld('gpsDials', {
   getMapToken: () => ipcRenderer.invoke('get-map-token'),
   setMapToken: (token: string) => ipcRenderer.invoke('set-map-token', token),
   pathForFile: (file: File) => webUtils.getPathForFile(file),
-  onProxyProgress: (listener: (fraction: number) => void) => {
-    ipcRenderer.on('proxy-progress', (_event, fraction) => listener(fraction));
+  onProxyProgress: (listener: (fraction: number, clip: string) => void) => {
+    ipcRenderer.on('proxy-progress', (_event, fraction, clip) => listener(fraction, clip));
   },
   onSyncProgress: (listener: (done: number, total: number) => void) => {
     ipcRenderer.on('sync-progress', (_event, done, total) => listener(done, total));

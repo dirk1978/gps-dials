@@ -2,7 +2,7 @@
 
 Free, open-source telemetry overlays for action camera footage: speed, heart rate, gradient, maps and more, lined up automatically with your GPS data.
 
-It is a community replacement for the workflow of Garmin VIRB Edit and paid overlay tools. The planned app imports your clips and FIT or GPX files, syncs them, lets you lay out dials on a WYSIWYG canvas and exports an overlay for your video editor: true transparency (alpha) for editors that support it, or a chroma key background for those that don't.
+It is a community successor to Garmin VIRB Edit, which Garmin no longer develops. The app imports your clips and FIT or GPX files, syncs them, lets you lay out dials on a WYSIWYG canvas and exports an overlay for your video editor: true transparency (alpha) for editors that support it, or a chroma key background for those that don't.
 
 > **Status: early but working.** Sync, the layout editor, source comparison and overlay export all work. Expect rough edges, and tell us what you find.
 
@@ -36,7 +36,15 @@ Transparent overlays run at 10 frames a second, the rate the dials update, which
 
 The **Design** tab works straight on top of your footage. Any data can be shown any way: speed, pace, heart rate, cadence, power, temperature, altitude, gradient, climbing, heading, distance or time, as a dial, arc, bar, number, graph, road profile, route or custom text.
 
-Drag and resize on the picture, with snapping to the centre and to other widgets. Each widget has its own colours, thickness, size, opacity, fonts, scale, ticks, colour zones and more, and a theme sets everything you haven't changed yourself. Layouts can be saved, shared as files, and imported from Telemetry Overlay `.toptrn` and `.toproj` files.
+The app recognises cycling, running, drone, boating and flying recordings and starts with a layout to suit, leaving out anything your file has no data for. Heart rate and power zones come from your own max heart rate and FTP, set in the Theme panel.
+
+Start from one of the built-in presets, or from nothing. Drag and resize on the picture, with snapping to the centre and to other widgets. Each widget has its own colours, thickness, size, opacity, fonts, scale, ticks, colour zones and more, and a theme sets everything you haven't changed yourself. Layouts can be saved and shared as files.
+
+## Maps in your overlays
+
+The **Map** display shows your track on a real map, either following you, or fitted to the clip or the whole activity. Choose the zoom, whether it turns with your direction of travel, its shape, opacity, darkness, colour, brightness and contrast, and style the route and position marker however you like.
+
+OpenStreetMap works with no setup. Its credit stays on the map, because that's a condition of using it. The app fetches only the map images each clip needs and keeps them on your PC, as [its tile policy](https://operations.osmfoundation.org/policies/tiles/) asks. Mapbox styles, including satellite, use your own token from **Map settings**, which explains the free allowance and how to get one. Any other provider can be added by its tile address. Check your provider's terms before publishing its maps in video.
 
 ## Compare your sources
 
@@ -84,4 +92,4 @@ Device support is built by the community, and each device is one small file. See
 
 ## Licence
 
-[MIT](LICENSE). The Barlow Condensed typeface is used under the SIL Open Font License. The downloads include FFmpeg as a separate program under the GPL, with its licence alongside it. Its source is available from [FFmpeg](https://ffmpeg.org/download.html#get-sources), and the builds come from [BtbN](https://github.com/BtbN/FFmpeg-Builds) and [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static). This project is not affiliated with Garmin, DJI, Insta360, Wahoo or Telemetry Overlay.
+[MIT](LICENSE). The Barlow Condensed typeface is used under the SIL Open Font License. The downloads include FFmpeg as a separate program under the GPL, with its licence alongside it. Its source is available from [FFmpeg](https://ffmpeg.org/download.html#get-sources), and the builds come from [BtbN](https://github.com/BtbN/FFmpeg-Builds) and [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static). This project is not affiliated with Garmin, DJI, Insta360 or Wahoo.

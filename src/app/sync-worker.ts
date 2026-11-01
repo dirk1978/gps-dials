@@ -14,7 +14,7 @@ port.once('message', async ({ data }: { data: Job }) => {
   try {
     const track = readActivity(data.trackPath);
     const result = data.clips
-      ? await syncSession(data.clips.map(path => ({ path })), track, (done, total) => port.postMessage({ progress: true, done, total }))
+      ? await syncSession(data.clips.map(path => ({ path })), track, (done, total) => port.postMessage({ progress: true, done, total }), data.trackPath)
       : await syncClip(data.clip!, track, undefined, data.upsideDown);
     port.postMessage({ ok: true, result });
   } catch (error) {

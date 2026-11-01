@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https://tile.openstreetmap.org https://server.arcgisonline.com https://api.mapbox.com; media-src gpsdials-media:; style-src 'self' 'unsafe-inline'; connect-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https:; media-src gpsdials-media:; style-src 'self' 'unsafe-inline'; connect-src 'none'">
   <title>gps-dials</title>
   <link rel="stylesheet" href="renderer.css">
 </head>
@@ -32,6 +32,7 @@
     <aside id="clip-panel" hidden>
       <h2 id="clip-count">Clips</h2>
       <p id="clip-summary"></p>
+      <div class="list-head"><span>Start</span><span>Length</span><span>Sync</span></div>
       <ul id="clip-list"></ul>
       <dl class="legend">
         <dt class="good">Matched</dt><dd>Lined up using this clip's own movement.</dd>
@@ -47,11 +48,13 @@
         <div class="button-row">
           <button id="layout-save" title="Save as a named layout">Save as</button>
           <button id="layout-delete" title="Delete the chosen layout">Delete</button>
-          <button id="layout-import" title="Open a layout, or a Telemetry Overlay template">Import</button>
+          <button id="layout-import" title="Open a layout someone has shared">Import</button>
           <button id="layout-export" title="Save this layout to a file you can share">Export</button>
           <button id="layout-reset" title="Go back to the built-in layout">Reset</button>
         </div>
       </div>
+      <h2>Presets</h2>
+      <div id="preset-grid" class="preset-grid"></div>
       <h2>Add</h2>
       <div class="add-tools">
         <select id="add-channel" aria-label="Data to add"></select>
@@ -71,6 +74,12 @@
         <video id="video" preload="auto"></video>
         <canvas id="overlay" aria-label="Overlay preview"></canvas>
         <div id="editor-layer"></div>
+        <div id="preview-status" class="preview-status" role="status" hidden>
+          <strong>Preparing preview <span id="preview-percent"></span></strong>
+          <span id="preview-name" class="preview-name"></span>
+          <span class="preview-track"><span id="preview-bar"></span></span>
+          <span class="preview-note">This makes a small copy for smooth scrubbing, once per clip. Your original video isn't changed. You can pick another clip while it runs.</span>
+        </div>
         <div id="video-empty" class="empty">Drop a video and a FIT file here</div>
       </div>
       <div class="controls">
@@ -129,13 +138,13 @@
     <button id="apply-shift" hidden></button>
     <button id="auto-sync" disabled>Auto-sync</button>
     <button id="lock" disabled>Match these two points</button>
-    <button id="save" disabled>Save</button>
+    <button id="save" disabled title="Keeps your sync and corrections next to the videos, so they're back when you reopen this folder. Makes no video files.">Save progress</button>
     <span class="grow"></span>
     <select id="overlay-format" aria-label="Overlay format" title="Transparent is for editors with alpha support, and takes about 0.5 GB a minute at 4K. Green screen files are tiny, and you key out the green in your editor.">
       <option value="prores-alpha">Transparent (ProRes 4444)</option>
       <option value="chroma-h264">Green screen (H.264)</option>
     </select>
-    <button id="generate" class="primary" disabled>Generate overlays</button>
+    <button id="generate" class="primary" disabled title="Makes one overlay video per clip for your editor, in an overlays folder beside your clips. Saves your progress first.">Generate overlays</button>
   </footer>
 
   <dialog id="layout-dialog">
@@ -153,10 +162,24 @@
   <dialog id="settings-dialog">
     <form method="dialog">
       <h2>Map settings</h2>
-      <p>Street, Satellite and Hybrid work without a key. They are for lining up clips here, not for baking into videos.</p>
-      <label for="mapbox-token">Mapbox access token (optional)</label>
+      <p>Everything works without an account. OpenStreetMap appears in your overlays for free, and the Sync tab's Satellite and Hybrid views are just for lining up clips.</p>
+
+      <h3>Richer maps with Mapbox (optional)</h3>
+      <p>A free Mapbox token adds satellite, hybrid, outdoors, dark and light maps to your overlays. They're polished and easy to read on video, and the satellite view is lovely for rides and flights.</p>
+
+      <h3>What it costs</h3>
+      <p>For most people, nothing. Mapbox has a generous free allowance, last published as 200,000 map images a month, then about $0.50 per 1,000 after that. One clip needs a few dozen images at most, and GPS Dials keeps each one on your PC, so reusing it costs nothing. As a rough guide, a full day's ride uses a few hundred, so you'd need to make a great many overlays to pay anything. Prices can change, so check <a href="https://www.mapbox.com/pricing" target="_blank" rel="noreferrer">Mapbox's pricing page</a>.</p>
+
+      <h3>How to get a token</h3>
+      <ol>
+        <li>Create an account at <a href="https://account.mapbox.com/auth/signup/" target="_blank" rel="noreferrer">mapbox.com</a>. They may ask for a card, even for the free allowance.</li>
+        <li>Open your <a href="https://account.mapbox.com/access-tokens/" target="_blank" rel="noreferrer">Access tokens page</a>.</li>
+        <li>Copy your default public token, which starts with <code>pk.</code>, and paste it below.</li>
+      </ol>
+
+      <label for="mapbox-token">Mapbox access token</label>
       <input id="mapbox-token" type="password" autocomplete="off" spellcheck="false" placeholder="pk...">
-      <p class="hint">Adds Mapbox Satellite and Hybrid layers. It is stored encrypted on this PC and sent only to Mapbox.</p>
+      <p class="hint">Stored encrypted on this PC and sent only to Mapbox. Then choose a Mapbox style for any map in the Design tab. Check their terms before publishing their maps in videos.</p>
       <p id="settings-error" class="note"></p>
       <div class="dialog-buttons">
         <button value="cancel">Cancel</button>

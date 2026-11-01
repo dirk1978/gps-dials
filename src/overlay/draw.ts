@@ -1,7 +1,7 @@
 import { channelDef, formatValue, readChannel, unitDef } from './channels.ts';
 import type { OverlayData } from './data.ts';
 import { displayDef } from './displays/index.ts';
-import type { Ctx, DrawEnv } from './displays/common.ts';
+import type { Ctx, DrawEnv, TileSource } from './displays/common.ts';
 import { resolveStyle, type Template, type Widget } from './template.ts';
 
 export type { Ctx } from './displays/common.ts';
@@ -15,13 +15,17 @@ export interface FrameContext {
   /** Clip start and end on the track's clock. */
   clipStart: number;
   clipEnd: number;
+  tiles?: TileSource;
+  mapToken?: string;
 }
 
 function drawWidget(ctx: Ctx, widget: Widget, frame: FrameContext, time: number): void {
   const { width, height, template, data, clipStart, clipEnd } = frame;
   const unit = width / 1920;
-  const style = resolveStyle(widget, template.theme);
+  const style = resolveStyle(widget, template.theme, template.rider);
   const channel = channelDef(widget.channel);
+  const display = displayDef(widget.display);
+  if (style.hideWhenNoData && !display.usesTrack && !data.available.has(widget.channel)) return;
   const unitInfo = unitDef(channel, style.unit);
   const clip = { clipStart };
   const value = readChannel(data, channel, style.unit, time, clip, style.smoothing);
@@ -35,13 +39,16 @@ function drawWidget(ctx: Ctx, widget: Widget, frame: FrameContext, time: number)
     data,
     value,
     valueText: formatValue(channel, value, style.decimals, style.showSign),
-    unitLabel: unitInfo.label,
+    // A compass point is already a whole answer, and "W°" isn't a heading.
+    unitLabel: channel.format === 'compass' ? '' : unitInfo.label,
     time,
     clipStart,
     clipEnd,
     unit,
     upColor: template.theme.up,
     downColor: template.theme.down,
+    tiles: frame.tiles,
+    mapToken: frame.mapToken ?? '',
     valueAt: t => readChannel(data, channel, style.unit, t, clip, style.smoothing),
   };
 
@@ -52,7 +59,7 @@ function drawWidget(ctx: Ctx, widget: Widget, frame: FrameContext, time: number)
     ctx.shadowBlur = style.shadow * unit;
     ctx.shadowOffsetY = unit;
   }
-  displayDef(widget.display).draw(env);
+  display.draw(env);
   ctx.restore();
 }
 

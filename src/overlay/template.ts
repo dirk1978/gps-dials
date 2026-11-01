@@ -1,11 +1,9 @@
 import { channelDef, type ChannelId } from './channels.ts';
+import { DEFAULT_RIDER, defaultZones, type Rider, type Zone } from './zones.ts';
 
-export type DisplayId = 'dial' | 'arc' | 'bar' | 'graph' | 'counter' | 'text' | 'route' | 'profile';
+export type { Zone } from './zones.ts';
 
-export interface Zone {
-  upTo: number;
-  color: string;
-}
+export type DisplayId = 'dial' | 'arc' | 'bar' | 'graph' | 'counter' | 'text' | 'route' | 'profile' | 'map';
 
 /** The look shared across a layout. Changing the theme recolours everything not set by hand. */
 export interface Theme {
@@ -96,12 +94,30 @@ export interface Style {
 
   useZones: boolean;
   zones: Zone[];
+  hideWhenNoData: boolean;
 
   routeWidth: number;
+  routeOutlineColor: string;
+  routeOutlineWidth: number;
   dotSize: number;
+  markerStyle: 'dot' | 'ring' | 'arrow';
+  markerColor: string;
   showRemaining: boolean;
   zoomToClip: boolean;
   fullRide: boolean;
+
+  mapProvider: string;
+  mapCustomUrl: string;
+  mapCredit: string;
+  mapMode: 'follow' | 'fitClip' | 'fitRide';
+  mapZoom: number;
+  mapRotate: boolean;
+  mapShape: 'rounded' | 'square' | 'circle';
+  mapOpacity: number;
+  mapDarken: number;
+  mapSaturation: number;
+  mapBrightness: number;
+  mapContrast: number;
 }
 
 export interface Widget {
@@ -126,6 +142,9 @@ export interface Template {
   widgets: Widget[];
   /** Length of road gradient is measured over, in metres. Shorter reacts faster; longer ignores noise. */
   gradientSpan?: number;
+  rider?: Rider;
+  /** Still the built-in choice, so it can follow the activity until someone edits it. */
+  auto?: boolean;
 }
 
 export const FONTS = ['Barlow Condensed', 'Arial', 'Segoe UI', 'Impact', 'Verdana', 'Georgia', 'Consolas'];
@@ -149,14 +168,6 @@ export const THEMES: Theme[] = [
   },
 ];
 
-const HEART_ZONES: Zone[] = [
-  { upTo: 110, color: '#9aa3b2' },
-  { upTo: 130, color: '#4a9eff' },
-  { upTo: 150, color: '#4fd67a' },
-  { upTo: 165, color: '#ffc23d' },
-  { upTo: 999, color: '#ff4d5e' },
-];
-
 const BASE_STYLE: Style = {
   opacity: 1,
   color: '', color2: '', textColor: '', mutedColor: '', trackColor: '', trackOpacity: 0.16, tickColor: '', needleColor: '',
@@ -168,21 +179,26 @@ const BASE_STYLE: Style = {
   thickness: 0.085, roundEnds: false, startAngle: 135, sweepAngle: 270, reverse: false, showNeedle: true, needleLength: 0.74, needleWidth: 0.04, showHub: true,
   orientation: 'horizontal',
   windowSeconds: 60, fillArea: true, lineWidth: 3, showMarker: true,
-  useZones: false, zones: [],
-  routeWidth: 3.5, dotSize: 7, showRemaining: true, zoomToClip: false, fullRide: true,
+  useZones: false, zones: [], hideWhenNoData: true,
+  routeWidth: 5, routeOutlineColor: '#000000', routeOutlineWidth: 1.5, dotSize: 8, markerStyle: 'dot', markerColor: '', showRemaining: true, zoomToClip: false, fullRide: true,
+  mapProvider: 'osm', mapCustomUrl: '', mapCredit: '', mapMode: 'follow', mapZoom: 14, mapRotate: false, mapShape: 'rounded',
+  mapOpacity: 1, mapDarken: 0, mapSaturation: 1, mapBrightness: 1, mapContrast: 1,
 };
 
 /** A widget's full style, with blanks filled from its theme and its data's defaults. */
-export function resolveStyle(widget: Widget, theme: Theme): Style {
+export function resolveStyle(widget: Widget, theme: Theme, rider: Rider = DEFAULT_RIDER): Style {
   const def = channelDef(widget.channel);
+  const zones = defaultZones(widget.channel, rider);
   const s: Style = {
     ...BASE_STYLE,
     bold: theme.bold,
     italic: theme.italic,
     // A route reads best whole; a profile is about the road around you.
     fullRide: widget.display !== 'profile',
+    useZones: zones != null,
     ...widget.style,
   };
+  if (!widget.style.zones?.length) s.zones = zones ?? [];
   s.color ||= theme.accent;
   s.color2 ||= theme.accent2;
   s.textColor ||= theme.text;
@@ -209,7 +225,7 @@ export function newId(): string {
 }
 
 const DEFAULT_SIZES: Record<DisplayId, [number, number]> = {
-  dial: [0.12, 0.2133], arc: [0.12, 0.2133], bar: [0.2, 0.06], graph: [0.3, 0.14], counter: [0.1, 0.09], text: [0.2, 0.06], route: [0.135, 0.24], profile: [0.5, 0.09],
+  dial: [0.15, 0.2667], arc: [0.15, 0.2667], bar: [0.25, 0.08], graph: [0.34, 0.18], counter: [0.11, 0.11], text: [0.24, 0.08], route: [0.2, 0.3556], profile: [0.5, 0.11], map: [0.2, 0.3556],
 };
 
 export function newWidget(channel: ChannelId, display: DisplayId, x = 0.4, y = 0.4): Widget {
@@ -226,14 +242,14 @@ export const defaultTemplate: Template = {
   name: 'Default',
   theme: THEMES[0],
   widgets: [
-    widget('distance', 'route', 0.012, 0.025, 0.135, 0.24, {}, 'Route'),
-    widget('gradient', 'counter', 0.3, 0.025, 0.1, 0.09, { showSign: true }),
-    widget('distance', 'counter', 0.4, 0.025, 0.1, 0.09),
-    widget('rideTime', 'counter', 0.5, 0.025, 0.1, 0.09),
-    widget('altitude', 'counter', 0.6, 0.025, 0.1, 0.09),
-    widget('heartRate', 'dial', 0.868, 0.025, 0.12, 0.2133, { useZones: true, zones: HEART_ZONES }),
-    widget('speed', 'dial', 0.868, 0.76, 0.12, 0.2133),
-    widget('altitude', 'profile', 0.2, 0.89, 0.6, 0.085, {}, 'Elevation'),
+    widget('distance', 'map', 0.012, 0.025, 0.2, 0.3556, {}, 'Map'),
+    widget('gradient', 'counter', 0.27, 0.025, 0.115, 0.11, { showSign: true }),
+    widget('distance', 'counter', 0.385, 0.025, 0.115, 0.11),
+    widget('rideTime', 'counter', 0.5, 0.025, 0.115, 0.11),
+    widget('altitude', 'counter', 0.615, 0.025, 0.115, 0.11),
+    widget('heartRate', 'dial', 0.838, 0.025, 0.15, 0.2667),
+    widget('speed', 'dial', 0.838, 0.71, 0.15, 0.2667),
+    widget('altitude', 'profile', 0.2, 0.865, 0.6, 0.11, {}, 'Elevation'),
   ],
 };
 
@@ -246,10 +262,12 @@ export function normaliseTemplate(raw: unknown): Template {
     name: String(t.name ?? 'Untitled'),
     theme: { ...THEMES[0], ...t.theme },
     gradientSpan: t.gradientSpan,
+    rider: t.rider,
+    auto: t.auto,
     widgets: t.widgets.filter(w => w && typeof w === 'object').map(w => ({
       ...w,
       id: String(w.id ?? newId()),
-      name: String(w.name ?? 'Widget'),
+      name: String(w.name || channelDef(w.channel).label),
       x: Number(w.x) || 0,
       y: Number(w.y) || 0,
       width: Number(w.width) || 0.1,

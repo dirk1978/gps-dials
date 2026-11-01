@@ -1,3 +1,6 @@
+/** An id from `src/activities`, or 'other' when nothing matches. */
+export type ActivityKind = string;
+
 export interface TrackPoint {
   /** Seconds since the Unix epoch. UTC where the source records it. */
   t: number;

@@ -1,4 +1,4 @@
-import { autoRange, drawPanel, drawText, fraction, rgba, setFont, spacedLabel, type DisplayDef } from './common.ts';
+import { autoRange, drawPanel, drawText, fraction, rgba, setFont, spacedLabel, valueColor, type DisplayDef } from './common.ts';
 
 const SAMPLES = 240;
 
@@ -15,10 +15,12 @@ export const graph: DisplayDef = {
     const plot = { x: box.x + pad, y: box.y + pad + headline, w: box.w - pad * 2, h: box.h - pad * 2 - headline };
 
     const points: [number, number][] = [];
+    const readings: number[] = [];
     for (let i = 0; i <= SAMPLES; i++) {
       const v = valueAt(time - style.windowSeconds * (1 - i / SAMPLES));
       if (v == null) continue;
       points.push([plot.x + (i / SAMPLES) * plot.w, plot.y + plot.h * (1 - fraction(style, v))]);
+      readings.push(v);
     }
 
     if (points.length > 1) {
@@ -38,13 +40,23 @@ export const graph: DisplayDef = {
         ctx.fill();
         ctx.restore();
       }
-      ctx.strokeStyle = gradient;
       ctx.lineWidth = style.lineWidth * unit;
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
-      ctx.beginPath();
-      points.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
-      ctx.stroke();
+      if (style.useZones && style.zones.length > 0) {
+        for (let i = 1; i < points.length; i++) {
+          ctx.strokeStyle = valueColor(style, readings[i]);
+          ctx.beginPath();
+          ctx.moveTo(...points[i - 1]);
+          ctx.lineTo(...points[i]);
+          ctx.stroke();
+        }
+      } else {
+        ctx.strokeStyle = gradient;
+        ctx.beginPath();
+        points.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+        ctx.stroke();
+      }
       if (style.showMarker) {
         const [x, y] = points[points.length - 1];
         ctx.fillStyle = style.textColor;

@@ -31,7 +31,7 @@ function render(template: Template): number {
 test('every kind of data draws on every kind of display', () => {
   for (const channel of CHANNELS) {
     for (const display of DISPLAYS) {
-      const widget = { ...newWidget(channel.id, display.id as DisplayId, 0.1, 0.1), width: 0.6, height: 0.6 };
+      const widget = { ...newWidget(channel.id, display.id as DisplayId, 0.1, 0.1), width: 0.6, height: 0.6, style: { hideWhenNoData: false } };
       const painted = render({ ...defaultTemplate, widgets: [widget] });
       assert.ok(painted > 0, `${channel.id} on ${display.id} drew nothing`);
     }
@@ -40,6 +40,24 @@ test('every kind of data draws on every kind of display', () => {
 
 test('every theme draws the default layout', () => {
   for (const theme of THEMES) assert.ok(render({ ...defaultTemplate, theme }) > 100, theme.name);
+});
+
+test('leaves out widgets the file has no data for, unless told otherwise', () => {
+  const power = { ...newWidget('power', 'dial', 0.1, 0.1) };
+  assert.equal(render({ ...defaultTemplate, widgets: [power] }), 0);
+  assert.ok(render({ ...defaultTemplate, widgets: [{ ...power, style: { hideWhenNoData: false } }] }) > 0);
+});
+
+test('zones follow the rider, and a hand-set list wins', () => {
+  const heart = newWidget('heartRate', 'dial');
+  const zones = resolveStyle(heart, THEMES[0], { maxHeartRate: 200, ftp: 250 }).zones;
+  assert.deepEqual(zones.slice(0, 4).map(z => z.upTo), [120, 140, 160, 180]);
+  const power = resolveStyle(newWidget('power', 'dial'), THEMES[0], { maxHeartRate: 200, ftp: 200 });
+  assert.deepEqual(power.zones.slice(0, 5).map(z => z.upTo), [110, 150, 180, 210, 240]);
+  assert.equal(power.useZones, true);
+  const mine = [{ upTo: 50, color: '#000000' }];
+  assert.deepEqual(resolveStyle({ ...heart, style: { zones: mine } }, THEMES[0]).zones, mine);
+  assert.equal(resolveStyle(newWidget('speed', 'dial'), THEMES[0]).useZones, false);
 });
 
 test('hidden widgets draw nothing', () => {

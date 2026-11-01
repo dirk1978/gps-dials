@@ -1,6 +1,5 @@
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { extname, join } from 'node:path';
-import { importTelemetryOverlay } from '../overlay/import-telemetry-overlay.ts';
+import { join } from 'node:path';
 import { normaliseTemplate, type Template } from '../overlay/template.ts';
 
 const EXTENSION = '.layout.json';
@@ -44,10 +43,8 @@ export function loadWorkingCopy(dir: string): Template | null {
 
 export const saveWorkingCopy = (dir: string, template: Template) => saveLayout(dir, CURRENT, template);
 
-/** Opens a file from outside the app, which can be one of ours or a Telemetry Overlay template. */
-export function importLayout(path: string): { template: Template; skipped: string[] } {
-  const raw = JSON.parse(readFileSync(path, 'utf8'));
+/** Opens a layout someone has shared as a file. */
+export function importLayout(path: string): Template {
   const name = path.split(/[\\/]/).pop()!.replace(/\.[^.]+$/, '').replace(/\.layout$/, '');
-  if (['.toptrn', '.toproj'].includes(extname(path).toLowerCase())) return importTelemetryOverlay(raw, name);
-  return { template: { ...normaliseTemplate(raw), name }, skipped: [] };
+  return { ...normaliseTemplate(JSON.parse(readFileSync(path, 'utf8'))), name };
 }

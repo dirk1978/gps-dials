@@ -24,6 +24,16 @@ export function parseDjiSrt(text: string): TrackPoint[] {
   return points;
 }
 
+const FIRST_FRAME = /(\d{2}):(\d{2}):(\d{2}),(\d{3}) -->[\s\S]*?(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})\.(\d{3})/;
+
+/** When the clip's first frame happened, on the same clock as the track, even if GPS had no fix yet. */
+export function srtClipStart(text: string): number | null {
+  const m = FIRST_FRAME.exec(text);
+  if (!m) return null;
+  const offset = +m[1] * 3600 + +m[2] * 60 + +m[3] + +m[4] / 1000;
+  return Date.UTC(+m[5], +m[6] - 1, +m[7], +m[8], +m[9], +m[10], +m[11]) / 1000 - offset;
+}
+
 export function readDjiSrt(path: string): TrackPoint[] {
   return parseDjiSrt(readFileSync(path, 'utf8'));
 }

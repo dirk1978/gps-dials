@@ -127,10 +127,39 @@ aside h2 {
 
 #clip-list { flex: 1; margin: 0; padding: 6px; list-style: none; overflow-y: auto; }
 
-#clip-list button {
-  display: flex;
-  justify-content: space-between;
+.list-head, #clip-list button {
+  display: grid;
+  grid-template-columns: 62px 42px 1fr;
+  align-items: center;
   gap: 8px;
+}
+
+.list-head { padding: 7px 21px 2px; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.list-head span:last-child, .clip-state { text-align: right; }
+.clip-length { color: var(--muted); font-size: 12px; font-weight: 400; }
+
+.preview-status {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  padding: 24px;
+  background: rgba(13, 17, 27, 0.92);
+  text-align: center;
+}
+
+.preview-status[hidden] { display: none; }
+.preview-status strong { font: italic 700 24px/1.1 var(--display); }
+.preview-name, .preview-note { color: var(--muted); font-size: 13px; }
+.preview-note { max-width: 420px; }
+.preview-track { width: min(380px, 80%); height: 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.preview-track span { display: block; height: 100%; width: 0; border-radius: 999px; background: var(--gradient); transition: width 0.2s linear; }
+
+#clip-list button {
   width: 100%;
   margin-bottom: 2px;
   padding: 7px 9px;
@@ -202,6 +231,13 @@ body.mode-design #editor-layer { display: block; cursor: default; touch-action: 
 .guide { position: absolute; background: #29f3e1; pointer-events: none; }
 .guide.vertical { top: 0; bottom: 0; width: 1px; }
 .guide.horizontal { left: 0; right: 0; height: 1px; }
+
+.preset-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; padding: 0 12px 10px; max-height: 240px; overflow-y: auto; }
+.preset { display: flex; flex-direction: column; gap: 4px; padding: 5px; font-size: 11px; white-space: normal; text-align: left; }
+.preset-thumb { position: relative; display: block; aspect-ratio: 16 / 9; border-radius: 4px; background: #0a0d15; overflow: hidden; }
+.preset-thumb span { position: absolute; background: var(--accent); opacity: 0.75; border-radius: 2px; }
+.preset-thumb span.round { border-radius: 50%; }
+.preset-thumb span.map { background: #2e97df; }
 
 .tabs { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--bg); margin-right: 6px; }
 .tab { border: 0; background: none; color: var(--muted); }
@@ -357,7 +393,12 @@ dialog {
 
 dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
 dialog h2 { margin: 0 0 8px; font: italic 700 26px/1.1 var(--display); }
-dialog p { margin: 0 0 12px; color: var(--muted); }
+dialog p, dialog ol { margin: 0 0 12px; color: var(--muted); }
+dialog ol { padding-left: 20px; }
+dialog h3 { margin: 14px 0 4px; font-size: 14px; }
+dialog a { color: var(--accent); }
+dialog code { color: var(--text); }
+#settings-dialog { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow-y: auto; }
 dialog label { display: block; margin-bottom: 4px; font-weight: 600; }
 
 dialog input {
