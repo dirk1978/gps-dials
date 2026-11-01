@@ -51,6 +51,10 @@ OpenStreetMap works with no setup. Its credit stays on the map, because that's a
 
 Recorded the same ride on two devices? The **Compare sources** tab shows where they agree and differ on position, altitude, speed, heart rate and gradient, and can build a combined track from the best of each. An optional check against terrain data sends your route to [Open-Meteo](https://open-meteo.com/) only when you press its button. Terrain data comes from the Copernicus GLO-90 elevation model.
 
+## Projects
+
+The **Project** menu keeps a piece of work together: your clips, GPS sources, sync, corrections, rotations and layout. Save a project, close it, start a new one, and open it again later. The project file only points to your videos, so they stay where they are, and the app tells you if any have moved.
+
 ## What works today
 
 Sync finds where a clip belongs in an activity by comparing the camera's turning with the turns in the GPS track, so it does not depend on the camera's clock being right. A camera's clock is wrong by about the same amount all day, so clips that match well also settle the short or straight clips that can't be matched alone.

@@ -15,6 +15,7 @@ import { DISPLAY_FONT, drawFrame, type Ctx } from '../../overlay/draw.ts';
 import { layoutFor } from '../../overlay/presets.ts';
 import { normaliseTemplate, type Template } from '../../overlay/template.ts';
 import type { FolderClip, FolderTrack } from '../folder.ts';
+import { projectName, type ProjectFile } from '../project.ts';
 import type { BatchProgress, OverlayBatch } from '../overlay-queue.ts';
 
 type Mode = 'sync' | 'design' | 'compare';
@@ -29,6 +30,8 @@ interface Clip {
   fileRotation: number;
   upsideDown: boolean;
   clockTime: number;
+  /** A subtitle track recorded with this clip, if there is one beside it. */
+  ownTrack: string | null;
   proxyMethod: string;
   proxySeconds: number;
   saved: SavedSync | null;
@@ -64,7 +67,15 @@ declare global {
       loadClip(path: string): Promise<Clip>;
       autoSync(job: { clip: string; upsideDown?: boolean; trackPath: string }): Promise<SyncResult>;
       autoSync(job: { clips: string[]; trackPath: string }): Promise<SessionResult[]>;
-      saveSync(clip: string, data: SavedSync): Promise<string>;
+      pickProjectSave(name: string): Promise<string | null>;
+      pickProjectOpen(): Promise<string | null>;
+      writeProject(path: string, project: ProjectFile): Promise<void>;
+      readProject(path: string): Promise<{ project: ProjectFile; missing: string[] }>;
+      recentProjects(): Promise<string[]>;
+      confirmDiscard(): Promise<'save' | 'discard' | 'cancel'>;
+      setDirty(value: boolean): Promise<void>;
+      closeWindow(): Promise<void>;
+      onSaveThenClose(listener: () => void): void;
       listLayouts(): Promise<string[]>;
       loadLayout(name: string): Promise<Template>;
       saveLayout(name: string, template: Template): Promise<void>;
@@ -88,6 +99,9 @@ declare global {
       openFolder(dir: string): Promise<void>;
       selectClip(path: string): Promise<void>;
       generate(options?: { outDir?: string; limit?: number }): Promise<void>;
+      saveProjectTo(path: string): Promise<boolean>;
+      openProject(path?: string): Promise<void>;
+      newProject(): Promise<void>;
       setMode(next: Mode): void;
       template(): Template;
       importLayoutFile(path: string): Promise<void>;
@@ -127,6 +141,15 @@ const autoStarts = new Map<string, number>();
 /** Rotation added by hand to each clip, so it survives moving on to another one. */
 const manualRotations = new Map<string, number>();
 const PREVIEW_PANEL_DELAY_MS = 150;
+const PROJECT_TO_OPEN = 'gps-dials.project-to-open';
+let projectPath: string | null = null;
+let projectTitle = 'Untitled project';
+/** Unsaved changes in the open project. */
+let dirty = false;
+/** True while loading, so putting things back isn't counted as changing them. */
+let restoring = false;
+/** Clocks can be hours out, so a clip counts as near a track within this much. */
+const TRACK_MATCH_MARGIN_S = 2 * 3600 + 300;
 const MAX_PREVIEW_TILES = 600;
 let mapToken = '';
 let clipRequest = 0;
@@ -290,7 +313,6 @@ function renderSyncState(detail?: string): void {
   const whole = clipsForTrack().length > 1;
   $<HTMLButtonElement>('auto-sync').disabled = !(track && (clip || folderClips.length > 0));
   $('auto-sync').textContent = whole ? 'Auto-sync all clips' : 'Auto-sync';
-  $<HTMLButtonElement>('save').disabled = !(linked || sessionResults.size > 0);
   renderApplyShift();
   renderClipLine();
   renderGenerateButton();
@@ -319,6 +341,7 @@ function applyShiftToEstimated(): void {
   const shift = handShift();
   const estimated = estimatedClips();
   for (const r of estimated) sessionResults.set(r.path, { ...r, clipStart: r.clipStart + shift });
+  markDirty();
   renderClipList();
   renderSyncState($('sync-detail').textContent ?? undefined);
   setStatus(`Moved ${estimated.length} estimated clips. Matched and by-hand clips were left alone.`);
@@ -424,7 +447,10 @@ const editor = createEditor({
   redraw: renderOverlayPreview,
   channelsWithData: () => overlayData?.available ?? null,
   status: setStatus,
-  saveWorkingCopy: t => { void api.saveWorkingCopy(t); },
+  saveWorkingCopy: t => {
+    void api.saveWorkingCopy(t);
+    markDirty();
+  },
 });
 
 /** Every recording that overlaps the current one in time. */
@@ -583,8 +609,8 @@ async function generateOverlays(options: { outDir?: string; limit?: number } = {
     extraRotation: r.path === clip?.path ? (rotation() - clip.fileRotation + 360) % 360 : manualRotations.get(r.path) ?? 0,
   }));
   if (items.length === 0) return;
-  // Generating is the end of the job, so the review it came from shouldn't be lost.
-  await saveAll();
+  // Generating is the end of the job, so a saved project shouldn't lose the review behind it.
+  if (projectPath && dirty) await saveProject();
   exporting = true;
   exportProgress.clear();
   renderGenerateButton();
@@ -622,6 +648,7 @@ function setTrackTime(time: number): void {
 }
 
 function applySync(start: number, how: 'auto' | 'manual', sure: boolean, detail: string): void {
+  if (how === 'manual') markDirty();
   clipStart = start;
   method = how;
   confident = sure;
@@ -651,8 +678,7 @@ function describeOffset(start: number): string {
 function clipsForTrack(): FolderClip[] {
   const selected = folderTracks.find(t => t.path === track?.path);
   if (!selected) return folderClips;
-  const margin = 2 * 3600 + 300;
-  return folderClips.filter(c => c.clockTime >= selected.start - margin && c.clockTime <= selected.end + margin);
+  return folderClips.filter(c => c.clockTime >= selected.start - TRACK_MATCH_MARGIN_S && c.clockTime <= selected.end + TRACK_MATCH_MARGIN_S);
 }
 
 const BASIS_TEXT: Record<SessionResult['basis'], string> = {
@@ -675,24 +701,144 @@ function applySessionResult(r: SessionResult): void {
   applySync(r.clipStart, r.basis === 'set by hand' ? 'manual' : 'auto', r.confident, `${BASIS_TEXT[r.basis]} ${describeOffset(r.clipStart)}`);
 }
 
-async function saveAll(): Promise<void> {
-  if (!track) return;
-  const trackPath = track.path;
-  const saved = (r: SessionResult): SavedSync => ({
-    version: 1,
-    track: trackPath,
-    clipStart: r.clipStart,
-    method: r.basis === 'set by hand' ? 'manual' : 'auto',
-    confident: r.confident,
-    manualRotation: manualRotations.get(r.path) ?? 0,
-    basis: r.basis,
-    autoStart: autoStarts.get(r.path),
-  });
-  for (const r of sessionResults.values()) await api.saveSync(r.path, saved(r));
-  setStatus(`Sync saved for ${sessionResults.size} videos. It will be there when you reopen this folder.`);
+function renderProjectName(): void {
+  $('project-name').textContent = `${projectTitle}${dirty ? ' •' : ''}`;
+  $('project-name').title = projectPath ?? 'Not saved yet';
+  document.title = `${projectTitle}${dirty ? ' •' : ''} - GPS Dials`;
 }
 
-/** Puts saved results back in the list, so reopening a folder carries on where it left off. */
+function markDirty(): void {
+  if (restoring || dirty) return;
+  dirty = true;
+  renderProjectName();
+  void api.setDirty(true);
+}
+
+function markSaved(): void {
+  dirty = false;
+  renderProjectName();
+  void api.setDirty(false);
+}
+
+function collectProject(): ProjectFile {
+  return {
+    version: 1,
+    name: projectTitle,
+    clips: folderClips,
+    tracks: folderTracks,
+    sessions: Object.fromEntries([...sessions].map(([path, results]) => [path, [...results.values()]])),
+    autoStarts: Object.fromEntries(autoStarts),
+    manualRotations: Object.fromEntries(manualRotations),
+    template,
+    format: $<HTMLSelectElement>('overlay-format').value,
+    activeTrack: track?.path ?? null,
+    activeClip: pendingClip ?? clip?.path ?? null,
+  };
+}
+
+/** Returns whether it saved, which is false if someone cancels choosing where. */
+async function saveProject(chooseFile = false): Promise<boolean> {
+  let path = projectPath;
+  if (!path || chooseFile) {
+    path = await api.pickProjectSave(projectTitle);
+    if (!path) return false;
+  }
+  projectPath = path;
+  projectTitle = projectName(path);
+  await api.writeProject(path, collectProject());
+  markSaved();
+  void refreshRecent();
+  setStatus(`Saved ${projectTitle}`);
+  return true;
+}
+
+/** Offers to save unfinished work. Returns false if the person would rather stay where they are. */
+async function canLeaveProject(): Promise<boolean> {
+  if (!dirty) return true;
+  const choice = await api.confirmDiscard();
+  if (choice === 'cancel') return false;
+  return choice === 'save' ? saveProject() : true;
+}
+
+/** A full reload is what guarantees nothing from the last project lingers. */
+async function startAfresh(nextProject?: string): Promise<void> {
+  markSaved();
+  await api.saveWorkingCopy(layoutFor('cycling'));
+  try {
+    if (nextProject) sessionStorage.setItem(PROJECT_TO_OPEN, nextProject);
+  } catch {
+    // Opening still works from the Project menu if this is unavailable.
+  }
+  location.reload();
+}
+
+async function newProject(): Promise<void> {
+  if (await canLeaveProject()) await startAfresh();
+}
+
+async function openProject(path?: string): Promise<void> {
+  if (!(await canLeaveProject())) return;
+  const chosen = path ?? await api.pickProjectOpen();
+  if (chosen) await startAfresh(chosen);
+}
+
+function trackLabel(t: FolderTrack): string {
+  if (t.device === 'Combined') return `Combined: ${t.name}, ${t.clips} clips`;
+  return `${t.device}, ${new Date(t.start * 1000).toISOString().slice(0, 10)}, ${t.clips} clips`;
+}
+
+async function loadProject(path: string): Promise<void> {
+  try {
+    const { project, missing } = await api.readProject(path);
+    restoring = true;
+    projectPath = path;
+    projectTitle = projectName(path);
+    const gone = new Set(missing);
+    folderClips = project.clips.filter(c => !gone.has(c.path));
+    folderTracks = project.tracks.filter(t => !gone.has(t.path));
+    for (const [trackPath, results] of Object.entries(project.sessions)) {
+      sessions.set(trackPath, new Map(results.filter(r => !gone.has(r.path)).map(r => [r.path, r])));
+    }
+    for (const [key, value] of Object.entries(project.autoStarts)) autoStarts.set(key, value);
+    for (const [key, value] of Object.entries(project.manualRotations)) manualRotations.set(key, value);
+    editor.replace(project.template, true);
+    $<HTMLSelectElement>('overlay-format').value = project.format;
+    $<HTMLSelectElement>('track-select').replaceChildren(...folderTracks.map(t => {
+      const option = document.createElement('option');
+      option.value = t.path;
+      option.textContent = trackLabel(t);
+      return option;
+    }));
+    if (folderClips.length > 0 || folderTracks.length > 0) document.body.classList.add('has-folder');
+    const active = folderTracks.find(t => t.path === project.activeTrack) ?? folderTracks[0];
+    if (active) await loadTrack(active.path);
+    if (project.activeClip && !gone.has(project.activeClip) && folderClips.some(c => c.path === project.activeClip)) await loadClip(project.activeClip);
+    setMode(mode);
+    renderClipList();
+    renderSyncState(clipStart != null ? $('sync-detail').textContent ?? undefined : undefined);
+    const lost = missing.length === 1 ? ' 1 file has moved and was left out.' : missing.length ? ` ${missing.length} files have moved and were left out.` : '';
+    setStatus(`Opened ${projectTitle}.${lost}`);
+  } catch (error) {
+    fail(error);
+  } finally {
+    restoring = false;
+    markSaved();
+  }
+}
+
+async function refreshRecent(): Promise<void> {
+  const recent = await api.recentProjects();
+  $('recent-heading').hidden = recent.length === 0;
+  $('recent-list').replaceChildren(...recent.map(path => {
+    const button = document.createElement('button');
+    button.textContent = projectName(path);
+    button.title = path;
+    button.addEventListener('click', () => { void openProject(path); });
+    return button;
+  }));
+}
+
+/** Puts results saved beside the clips by earlier versions back in the list. */
 function restoreSavedResults(): void {
   for (const c of folderClips) {
     const saved = c.saved;
@@ -722,14 +868,16 @@ async function runAutoSync(): Promise<void> {
     const seconds = () => ((performance.now() - started) / 1000).toFixed(0);
     const day = clipsForTrack();
     // A drone track belongs to one clip exactly, so it takes the same route as a whole folder.
-    if (day.length > 1 || (day.length === 1 && (!clip || /\.srt$/i.test(track.path)))) {
-      const results = await api.autoSync({ clips: day.map(c => c.path), trackPath: track.path });
+    const droneClips = /\.srt$/i.test(track.path) ? (clip ? [clip.path] : day.map(c => c.path)) : null;
+    if (droneClips || day.length > 1 || (day.length === 1 && !clip)) {
+      const results = await api.autoSync({ clips: droneClips ?? day.map(c => c.path), trackPath: track.path });
       let kept = 0;
       for (const r of results) {
         autoStarts.set(r.path, r.clipStart);
         if (sessionResults.get(r.path)?.basis === 'set by hand') kept++;
         else sessionResults.set(r.path, r);
       }
+      markDirty();
       renderClipList();
       const current = clip && sessionResults.get(clip.path);
       if (current) applySessionResult(current);
@@ -743,6 +891,7 @@ async function runAutoSync(): Promise<void> {
         : 'Likely, but another match was close. Play it and check.';
       sessionResults.set(clip.path, { ...r, path: clip.path, basis: 'own motion' });
       autoStarts.set(clip.path, r.clipStart);
+      markDirty();
       applySync(r.clipStart, 'auto', r.confident, `${note} ${describeOffset(r.clipStart)}`);
       renderClipList();
       setStatus(`Matched in ${seconds()} s, r=${r.turnR.toFixed(2)}, lead ${r.lead.toFixed(2)}`);
@@ -835,6 +984,7 @@ async function openFolder(dir: string): Promise<void> {
     autoStarts.clear();
     manualRotations.clear();
     restoreSavedResults();
+    markDirty();
     if (folderTracks.length === 0) {
       setStatus('No FIT or SRT tracks found in that folder.');
       return;
@@ -848,7 +998,6 @@ async function openFolder(dir: string): Promise<void> {
       return option;
     }));
     $('track-picker').hidden = false;
-    $('open-track').hidden = true;
     $('track-name').hidden = true;
     document.body.classList.add('has-folder');
     await loadTrack(folderTracks[0].path);
@@ -875,11 +1024,43 @@ function toggleLock(): void {
   applySync(start, 'manual', true, `Matched by hand. ${describeOffset(start)}`);
 }
 
+/** Makes sure a track can be chosen again later, however it was opened. */
+function listTrack(loaded: Track): void {
+  const select = $<HTMLSelectElement>('track-select');
+  $('track-picker').hidden = false;
+  $('track-name').hidden = true;
+  if ([...select.options].some(o => o.value === loaded.path)) return;
+  const { t } = loaded.columns;
+  const device = loaded.kind === 'drone' ? 'Drone' : loaded.kind === 'other' ? 'Track' : loaded.kind[0].toUpperCase() + loaded.kind.slice(1);
+  const day = new Date(t[0] * 1000).toISOString().slice(0, 10);
+  folderTracks = [...folderTracks, { path: loaded.path, name: loaded.name, device, start: t[0], end: t[t.length - 1], points: t.length, clips: 0 }];
+  const option = document.createElement('option');
+  option.value = loaded.path;
+  option.textContent = `${device}, ${day}, ${loaded.name}`;
+  select.append(option);
+}
+
+/** A clip opened on its own joins the list, so it can be synced and generated like any other. */
+function listClip(loaded: Clip): void {
+  if (folderClips.some(c => c.path === loaded.path)) return;
+  folderClips = [...folderClips, { path: loaded.path, name: loaded.name, clockTime: loaded.clockTime, duration: loaded.duration }]
+    .sort((a, b) => a.clockTime - b.clockTime);
+}
+
+/** A clip's own drone track beats whatever is selected, unless that track covers the clip anyway. */
+function shouldUseOwnTrack(loaded: Clip): boolean {
+  if (!loaded.ownTrack || loaded.ownTrack === track?.path) return false;
+  if (!track || /\.srt$/i.test(track.path)) return true;
+  const { t } = track.columns;
+  return loaded.clockTime < t[0] - TRACK_MATCH_MARGIN_S || loaded.clockTime > t[t.length - 1] + TRACK_MATCH_MARGIN_S;
+}
+
 async function loadTrack(path: string): Promise<void> {
   setStatus('Reading track');
   track = await api.loadTrack(path);
   const { columns } = track;
   $('track-name').textContent = track.name;
+  listTrack(track);
   $<HTMLSelectElement>('track-select').value = path;
   sessionResults = sessions.get(path) ?? new Map();
   sessions.set(path, sessionResults);
@@ -955,6 +1136,7 @@ async function loadClip(path: string): Promise<void> {
   $('preview-status').hidden = true;
   const keepPlaying = !video.paused;
   clip = loaded;
+  listClip(loaded);
   clipStart = null;
   confident = false;
   manualRotation = manualRotations.get(path) ?? 0;
@@ -965,9 +1147,11 @@ async function loadClip(path: string): Promise<void> {
   videoScrub.max = String(loaded.duration);
   videoScrub.disabled = false;
   renderRotation();
+  if (shouldUseOwnTrack(loaded)) await loadTrack(loaded.ownTrack!);
   placeTrackAtClipClock();
   renderVideoPosition();
   renderTrackPosition();
+  renderClipList();
   const fromDay = sessionResults.get(loaded.path);
   if (fromDay) applySessionResult(fromDay);
   else applySaved();
@@ -1018,6 +1202,7 @@ $('settings-save').addEventListener('click', async event => {
 $('rotate').addEventListener('click', () => {
   manualRotation = (manualRotation + 90) % 360;
   if (clip) manualRotations.set(clip.path, manualRotation);
+  markDirty();
   renderRotation();
 });
 $('auto-rotate').addEventListener('change', renderRotation);
@@ -1064,17 +1249,27 @@ map.on('click', event => {
 
 $('auto-sync').addEventListener('click', () => { void runAutoSync(); });
 $('lock').addEventListener('click', toggleLock);
-$('save').addEventListener('click', async () => {
-  if (sessionResults.size > 0) {
-    await saveAll();
-    return;
-  }
-  if (!clip || !track || clipStart == null) return;
-  await api.saveSync(clip.path, { version: 1, track: track.path, clipStart, method, confident, manualRotation });
-  setStatus('Sync saved next to the video');
+const closeMenu = () => { $<HTMLDetailsElement>('project-menu').open = false; };
+$('project-new').addEventListener('click', () => { closeMenu(); void newProject(); });
+$('project-open').addEventListener('click', () => { closeMenu(); void openProject(); });
+$('project-save').addEventListener('click', () => { closeMenu(); void saveProject(); });
+$('project-save-as').addEventListener('click', () => { closeMenu(); void saveProject(true); });
+document.addEventListener('click', event => {
+  if (!(event.target as HTMLElement).closest('#project-menu')) closeMenu();
+});
+api.onSaveThenClose(async () => {
+  if (await saveProject()) await api.closeWindow();
 });
 
 document.addEventListener('keydown', event => {
+  if ((event.ctrlKey || event.metaKey) && !event.shiftKey) {
+    const action = { s: () => saveProject(), o: () => openProject(), n: () => newProject() }[event.key.toLowerCase()];
+    if (action) {
+      event.preventDefault();
+      void action();
+      return;
+    }
+  }
   if (mode === 'design' && editor.keydown(event)) {
     event.preventDefault();
     return;
@@ -1116,6 +1311,12 @@ window.app = {
   openFolder,
   selectClip,
   generate: generateOverlays,
+  saveProjectTo: async path => {
+    projectPath = path;
+    return saveProject();
+  },
+  openProject,
+  newProject,
   setMode,
   template: () => template,
   importLayoutFile: async path => bringInLayout(await api.importLayoutPath(path)),
@@ -1132,11 +1333,24 @@ for (const name of ['sync', 'design', 'compare'] as Mode[]) {
 }
 wireLayoutTools();
 void refreshLayouts();
-void api.loadWorkingCopy().then(saved => {
-  if (!saved) return;
+void (async () => {
+  restoring = true;
+  const saved = await api.loadWorkingCopy();
   // Restoring what was there isn't an edit, so a layout on auto stays on auto.
-  editor.replace(normaliseTemplate(saved), true);
-});
+  if (saved) editor.replace(normaliseTemplate(saved), true);
+  restoring = false;
+  renderProjectName();
+  void api.setDirty(false);
+  void refreshRecent();
+  let pending: string | null = null;
+  try {
+    pending = sessionStorage.getItem(PROJECT_TO_OPEN);
+    sessionStorage.removeItem(PROJECT_TO_OPEN);
+  } catch {
+    pending = null;
+  }
+  if (pending) await loadProject(pending);
+})();
 void buildMapLayers();
 // Canvas text won't load a web font by itself, and would draw the first dials in a fallback.
 void Promise.all([

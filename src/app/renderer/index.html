@@ -14,10 +14,22 @@
       <button id="tab-design" class="tab" aria-pressed="false">Design</button>
       <button id="tab-compare" class="tab" aria-pressed="false">Compare sources</button>
     </nav>
+    <details id="project-menu" class="menu">
+      <summary>Project</summary>
+      <div class="menu-items">
+        <button id="project-new" title="Ctrl+N">New</button>
+        <button id="project-open" title="Ctrl+O">Open</button>
+        <button id="project-save" title="Ctrl+S">Save</button>
+        <button id="project-save-as">Save as</button>
+        <p class="menu-heading" id="recent-heading" hidden>Recent</p>
+        <div id="recent-list"></div>
+      </div>
+    </details>
+    <span id="project-name" class="project-name"></span>
     <button id="open-folder" class="primary">Open folder</button>
     <button id="open-clip">Open video</button>
     <span id="clip-name" class="file">No video</span>
-    <button id="open-track">Open track</button>
+    <button id="open-track" title="Add a FIT or SRT file as a GPS source">Add GPS file</button>
     <span id="track-name" class="file">No FIT or SRT</span>
     <label id="track-picker" class="picker" hidden title="The GPS recording used for the map, speed and heart rate. Each source keeps its own sync, so you can switch and compare.">
       GPS source
@@ -138,14 +150,13 @@
     <button id="apply-shift" hidden></button>
     <button id="auto-sync" disabled>Auto-sync</button>
     <button id="lock" disabled>Match these two points</button>
-    <button id="save" disabled title="Keeps your sync and corrections next to the videos, so they're back when you reopen this folder. Makes no video files.">Save progress</button>
     <span class="grow"></span>
     <select id="overlay-format" aria-label="Overlay format" title="Pick what your editor accepts. Transparent files take about 0.3 to 0.5 GB a minute at 4K. Green screen files are tiny, and you key out the green in your editor.">
       <option value="png-alpha">Transparent for PowerDirector (PNG)</option>
       <option value="prores-alpha">Transparent for Resolve, Premiere, Final Cut (ProRes)</option>
       <option value="chroma-h264">Green screen for any editor (H.264)</option>
     </select>
-    <button id="generate" class="primary" disabled title="Makes one overlay video per clip for your editor, in an overlays folder beside your clips. Saves your progress first.">Generate overlays</button>
+    <button id="generate" class="primary" disabled title="Makes one overlay video per clip for your editor, in an overlays folder beside your clips.">Generate overlays</button>
   </footer>
 
   <dialog id="layout-dialog">

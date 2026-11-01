@@ -7,7 +7,17 @@ contextBridge.exposeInMainWorld('gpsDials', {
   loadTrack: (path: string) => ipcRenderer.invoke('load-track', path),
   loadClip: (path: string) => ipcRenderer.invoke('load-clip', path),
   autoSync: (job: unknown) => ipcRenderer.invoke('auto-sync', job),
-  saveSync: (clip: string, data: unknown) => ipcRenderer.invoke('save-sync', clip, data),
+  pickProjectSave: (name: string) => ipcRenderer.invoke('project-pick-save', name),
+  pickProjectOpen: () => ipcRenderer.invoke('project-pick-open'),
+  writeProject: (path: string, project: unknown) => ipcRenderer.invoke('project-write', path, project),
+  readProject: (path: string) => ipcRenderer.invoke('project-read', path),
+  recentProjects: () => ipcRenderer.invoke('project-recent'),
+  confirmDiscard: () => ipcRenderer.invoke('confirm-discard'),
+  setDirty: (value: boolean) => ipcRenderer.invoke('set-dirty', value),
+  closeWindow: () => ipcRenderer.invoke('close-window'),
+  onSaveThenClose: (listener: () => void) => {
+    ipcRenderer.on('save-then-close', () => listener());
+  },
   compareSources: (items: unknown) => ipcRenderer.invoke('compare-sources', items),
   checkTerrain: (items: unknown) => ipcRenderer.invoke('check-terrain', items),
   combineSources: (items: unknown, choices: unknown, name: string) => ipcRenderer.invoke('combine-sources', items, choices, name),

@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { basename, delimiter, join } from 'node:path';
+import { createReadStream, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { basename, delimiter, extname, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { BrowserWindow, app, dialog, ipcMain, protocol, safeStorage, session, shell, utilityProcess } from 'electron';
 import { COMBINED_EXTENSION, writeCombined } from '../activity/combined.ts';
@@ -16,6 +16,7 @@ import type { Template } from '../overlay/template.ts';
 import { scanFolder } from './folder.ts';
 import { deleteLayout, importLayout, listLayouts, loadLayout, loadWorkingCopy, saveLayout, saveWorkingCopy } from './layouts.ts';
 import { cancelOverlays, renderBatch, type OverlayBatch } from './overlay-queue.ts';
+import { PROJECT_EXTENSION, addRecent, missingFiles, parseProject } from './project.ts';
 import { ensureProxy } from './proxy.ts';
 
 const MEDIA_SCHEME = 'gpsdials-media';
@@ -31,6 +32,18 @@ protocol.registerSchemesAsPrivileged([{ scheme: MEDIA_SCHEME, privileges: { stre
 
 let window: BrowserWindow;
 const proxies = new Map<string, string>();
+/** Whether the open project has changes that aren't saved. */
+let dirty = false;
+
+const UNSAVED_CHOICES = ['save', 'discard', 'cancel'] as const;
+const UNSAVED_PROMPT = {
+  type: 'question' as const,
+  message: 'Save changes to this project?',
+  detail: 'Your sync, corrections and layout will be lost if you don\'t save them.',
+  buttons: ['Save', 'Don\'t save', 'Cancel'],
+  defaultId: 0,
+  cancelId: 2,
+};
 
 function serveProxy(request: Request): Response {
   const path = proxies.get(new URL(request.url).hostname);
@@ -57,6 +70,12 @@ function probe(clip: string): { duration: number; fps: number } {
 }
 
 const sidecarPath = (clip: string) => `${clip}.gpsdials.json`;
+
+/** A subtitle track saved beside a clip under the same name, as DJI drones write them. */
+function ownTrackFor(clip: string): string | null {
+  const stem = clip.slice(0, -extname(clip).length);
+  return [`${stem}.SRT`, `${stem}.srt`].find(path => existsSync(path)) ?? null;
+}
 const tokenPath = () => join(app.getPath('userData'), 'mapbox-token.bin');
 
 function readMapToken(): string {
@@ -106,6 +125,7 @@ function registerIpc(): void {
       url: `${MEDIA_SCHEME}://${id}/clip.mp4`,
       duration,
       fps,
+      ownTrack: ownTrackFor(clip),
       fileRotation: displayRotation(clip),
       upsideDown: await isUpsideDown(clip),
       clockTime: clipClockTime(clip),
@@ -197,10 +217,65 @@ function registerIpc(): void {
     worker.postMessage(job);
   }));
 
-  ipcMain.handle('save-sync', (_event, clip: string, data: unknown) => {
-    writeFileSync(sidecarPath(clip), JSON.stringify(data, null, 2));
-    return sidecarPath(clip);
+  ipcMain.handle('project-pick-save', async (_event, name: string) => {
+    const { canceled, filePath } = await dialog.showSaveDialog(window, {
+      defaultPath: `${name}.${PROJECT_EXTENSION}`,
+      filters: [{ name: 'GPS Dials project', extensions: [PROJECT_EXTENSION] }],
+    });
+    return canceled ? null : filePath ?? null;
   });
+
+  ipcMain.handle('project-pick-open', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(window, {
+      properties: ['openFile'],
+      filters: [{ name: 'GPS Dials project', extensions: [PROJECT_EXTENSION] }],
+    });
+    return canceled ? null : filePaths[0];
+  });
+
+  ipcMain.handle('project-write', (_event, path: string, project: unknown) => {
+    // Written alongside first, so a crash partway can't damage the saved project.
+    const partial = `${path}.saving`;
+    writeFileSync(partial, JSON.stringify(project));
+    renameSync(partial, path);
+    rememberProject(path);
+  });
+
+  ipcMain.handle('project-read', (_event, path: string) => {
+    const project = parseProject(JSON.parse(readFileSync(path, 'utf8')));
+    rememberProject(path);
+    return { project, missing: missingFiles(project, existsSync) };
+  });
+
+  ipcMain.handle('project-recent', () => readRecent().filter(path => existsSync(path)));
+
+  ipcMain.handle('confirm-discard', async () => {
+    const { response } = await dialog.showMessageBox(window, UNSAVED_PROMPT);
+    return UNSAVED_CHOICES[response];
+  });
+
+  ipcMain.handle('set-dirty', (_event, value: boolean) => {
+    dirty = value;
+  });
+
+  ipcMain.handle('close-window', () => {
+    dirty = false;
+    window.close();
+  });
+}
+
+const recentPath = () => join(app.getPath('userData'), 'recent-projects.json');
+
+function readRecent(): string[] {
+  try {
+    return JSON.parse(readFileSync(recentPath(), 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
+function rememberProject(path: string): void {
+  writeFileSync(recentPath(), JSON.stringify(addRecent(readRecent(), path)));
 }
 
 app.whenReady().then(async () => {
@@ -226,6 +301,19 @@ app.whenReady().then(async () => {
     autoHideMenuBar: true,
     webPreferences: { preload: join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true },
   });
+  window.on('close', event => {
+    if (!dirty) return;
+    event.preventDefault();
+    void dialog.showMessageBox(window, UNSAVED_PROMPT).then(({ response }) => {
+      const choice = UNSAVED_CHOICES[response];
+      if (choice === 'save') window.webContents.send('save-then-close');
+      if (choice === 'discard') {
+        dirty = false;
+        window.close();
+      }
+    });
+  });
+
   // Links open in the person's own browser, and only ever to the sites the app links to.
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https://www.mapbox.com/') || url.startsWith('https://account.mapbox.com/')) void shell.openExternal(url);
