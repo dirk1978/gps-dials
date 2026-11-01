@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import type { TrackPoint } from '../../activity/types.ts';
 import type { MotionSample } from '../types.ts';
 
 interface Field {
@@ -6,6 +7,7 @@ interface Field {
   wire: number;
   value?: bigint;
   float?: number;
+  double?: number;
   start?: number;
   end?: number;
 }
@@ -37,6 +39,7 @@ function fields(b: Buffer, start: number, end: number): Field[] {
       out.push({ no, wire, float: b.readFloatLE(p) });
       p += 4;
     } else if (wire === 1) {
+      out.push({ no, wire, double: b.readDoubleLE(p) });
       p += 8;
     } else if (wire === 2) {
       const [len, n] = readVarint(b, p);
@@ -108,6 +111,27 @@ export function readDjmdMotion(clip: string): MotionSample[] {
     samples.push({ t, q: [q.get(1)!, q.get(2)!, q.get(3)!, q.get(4)!], accel: [a.get(2) ?? 0, a.get(3) ?? 0, a.get(4) ?? 0] });
   });
   return samples;
+}
+
+const MILLIMETRES = 1000;
+
+/**
+ * The GPS a drone stores inside the video, as a track that starts from the clip's first
+ * frame. On the Neo, 3.4.4.1 holds latitude and longitude in radians, and 3.4.5.1 the
+ * height above take-off in millimetres. Frames without a fix are left out.
+ */
+export function readDjmdTrack(clip: string, clipStart: number): TrackPoint[] {
+  const points: TrackPoint[] = [];
+  eachFrame(clip, (data, frame, t) => {
+    const drone = child(data, frame, 4);
+    const fix = child(data, child(data, drone, 4), 1);
+    const lat = child(data, fix, 2)?.double;
+    const lon = child(data, fix, 3)?.double;
+    if (!lat || !lon) return;
+    const height = child(data, child(data, drone, 5), 1)?.float;
+    points.push({ t: clipStart + t, lat: (lat * 180) / Math.PI, lon: (lon * 180) / Math.PI, altitude: height == null ? undefined : height / MILLIMETRES });
+  });
+  return points;
 }
 
 export interface DjmdFrame {

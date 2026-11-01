@@ -1,10 +1,10 @@
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { extname } from 'node:path';
 import { srtClipStart } from '../activity/dji-srt.ts';
 import type { TrackPoint } from '../activity/types.ts';
 import { genericVideo } from '../devices/generic-video.ts';
 import { findDevice } from '../devices/index.ts';
+import { clipClockTime } from './clock.ts';
 import { clockInliers, localClockError } from './consensus.ts';
 import { gpsYawRate, resample, slidingCorrelation, smooth, topPeaks } from './correlate.ts';
 import { isUpsideDown } from './orientation.ts';
@@ -28,6 +28,8 @@ const VOTE_SPEED_R = 0.35;
 /** How far a clip may refine the day's clock error using its own motion. */
 const REFINE_S = 3;
 const REFINE_MIN_R = 0.5;
+
+export { clipClockTime };
 
 export interface SyncResult {
   /** Seconds since the Unix epoch at the clip's first frame, on the track's clock. */
@@ -54,11 +56,6 @@ export interface SessionResult extends SyncResult {
   path: string;
   /** How the start was decided: this clip alone, this clip guided by the day, the day alone, or by hand. */
   basis: 'own motion' | 'guided by other clips' | 'clock from other clips' | 'set by hand' | 'from its own subtitles';
-}
-
-export function clipClockTime(path: string): number {
-  const out = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format_tags=creation_time', '-of', 'csv=p=0', path]).toString().trim();
-  return Date.parse(out) / 1000;
 }
 
 interface Analysis {
@@ -116,15 +113,23 @@ export async function syncClip(clip: string, track: TrackPoint[], deviceId?: str
 
 /** Drone subtitles were written frame by frame with the clip, so nothing needs matching. */
 function exactResults(clips: SessionClip[], trackPath?: string): SessionResult[] | null {
-  if (!trackPath || extname(trackPath).toLowerCase() !== '.srt') return null;
+  if (!trackPath) return null;
+  // GPS stored inside the video is on the clip's clock from the first frame.
+  const inside = clips.find(c => c.path === trackPath);
+  if (inside) return [exactResult(inside.path, clipClockTime(inside.path))];
+  if (extname(trackPath).toLowerCase() !== '.srt') return null;
   const stem = trackPath.slice(0, -extname(trackPath).length).toLowerCase();
   const clip = clips.find(c => c.path.slice(0, -extname(c.path).length).toLowerCase() === stem);
   const clipStart = clip ? srtClipStart(readFileSync(trackPath, 'utf8')) : null;
   if (!clip || clipStart == null) return null;
-  return [{
-    path: clip.path, clipStart, clockTime: clipClockTime(clip.path), turnR: 1, speedR: null, lead: 1, runnerUp: null,
+  return [exactResult(clip.path, clipStart)];
+}
+
+function exactResult(path: string, clipStart: number): SessionResult {
+  return {
+    path, clipStart, clockTime: clipClockTime(path), turnR: 1, speedR: null, lead: 1, runnerUp: null,
     confident: true, deviceName: 'DJI drone', source: 'subtitle track', motionSeconds: 0, basis: 'from its own subtitles',
-  }];
+  };
 }
 
 /**

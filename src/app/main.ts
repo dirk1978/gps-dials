@@ -6,6 +6,7 @@ import { BrowserWindow, app, dialog, ipcMain, protocol, safeStorage, session, sh
 import { COMBINED_EXTENSION, writeCombined } from '../activity/combined.ts';
 import { toColumns } from '../activity/columns.ts';
 import { activityKind, readActivity } from '../activity/index.ts';
+import { djiNeo } from '../devices/dji-neo.ts';
 import { clipClockTime } from '../sync/engine.ts';
 import { displayRotation, isUpsideDown } from '../sync/orientation.ts';
 import {
@@ -74,7 +75,7 @@ function probe(clip: string): { duration: number; fps: number } {
 
 const sidecarPath = (clip: string) => `${clip}.gpsdials.json`;
 
-/** A subtitle track saved beside a clip under the same name, as DJI drones write them. */
+/** The track recorded along with a clip: subtitles beside it under the same name, or GPS inside it. */
 function ownTrackFor(clip: string): string | null {
   const stem = clip.slice(0, -extname(clip).length);
   return [`${stem}.SRT`, `${stem}.srt`].find(path => existsSync(path)) ?? null;

@@ -38,6 +38,22 @@ test('every kind of data draws on every kind of display', () => {
   }
 });
 
+test('shows a widget the camera has data for, even when the track has none', () => {
+  const iso = newWidget('iso', 'counter', 0.1, 0.1);
+  const template = { ...defaultTemplate, widgets: [iso] };
+  assert.equal(render(template), 0);
+  const canvas = createCanvas(640, 360);
+  const sensors = { t: [0, 1], series: { iso: [400, 800] } };
+  drawFrame(canvas.getContext('2d') as unknown as Ctx, { width: 640, height: 360, template, data, clipStart: 1100, clipEnd: 1200, sensors }, 1100.5);
+  const { data: pixels } = canvas.getContext('2d').getImageData(0, 0, 640, 360);
+  assert.ok(pixels.some((v, i) => i % 4 === 3 && v > 0));
+});
+
+test('colours a route by its data', () => {
+  const route = { ...newWidget('distance', 'route', 0.1, 0.1), width: 0.6, height: 0.6, style: { routeColorBy: 'speed' as const } };
+  assert.ok(render({ ...defaultTemplate, widgets: [route] }) > 0);
+});
+
 test('every theme draws the default layout', () => {
   for (const theme of THEMES) assert.ok(render({ ...defaultTemplate, theme }) > 100, theme.name);
 });

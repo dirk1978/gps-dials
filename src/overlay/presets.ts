@@ -67,6 +67,28 @@ export const PRESETS: Template[] = [
     ['gradient', 'counter', 0.23, 0.84, 0.16, 0.135, SIGNED],
     ['heartRate', 'counter', 0.61, 0.84, 0.16, 0.135],
   ], THEMES[3]),
+  layout('Lap timer', [
+    ['lapNumber', 'counter', LEFT, 0.025, 0.08, COUNTER_H],
+    ['lapTime', 'counter', 0.1, 0.025, 0.13, COUNTER_H],
+    ['lastLap', 'counter', 0.238, 0.025, 0.13, COUNTER_H],
+    ['bestLap', 'counter', 0.376, 0.025, 0.13, COUNTER_H],
+    ['speed', 'dial', RIGHT_DIAL, BOTTOM_DIAL, DIAL_W, DIAL_H],
+    ['heartRate', 'zones', LEFT, 0.87, 0.22, 0.105],
+  ]),
+  layout('Track day', [
+    ['distance', 'route', LEFT, 0.025, MAP_W, MAP_H, { mapMode: 'fitRide', routeColorBy: 'speed' }],
+    ['speed', 'tape', 0.35, 0.87, 0.3, 0.105],
+    ['gForce', 'scope', LEFT, BOTTOM_DIAL, DIAL_W, DIAL_H],
+    ['leanAngle', 'tilt', 0.172, 0.8, DIAL_W, 0.17],
+    ['cornerSpeed', 'counter', RIGHT_DIAL, 0.85, DIAL_W, 0.125],
+    ['maxSpeed', 'counter', RIGHT_DIAL, 0.71, DIAL_W, 0.125],
+  ]),
+  layout('Camera settings', [
+    ['iso', 'counter', 0.015, 0.87, 0.1, 0.105],
+    ['shutter', 'counter', 0.12, 0.87, 0.1, 0.105],
+    ['aperture', 'counter', 0.225, 0.87, 0.1, 0.105],
+    ['whiteBalance', 'counter', 0.33, 0.87, 0.1, 0.105],
+  ]),
   layout('Route only', [
     ['distance', 'route', LEFT, 0.025, MAP_W, MAP_H, { mapMode: 'fitRide' }],
   ]),

@@ -18,6 +18,7 @@ npm test
 2. **Add an adapter** in `src/devices/`, using [dji-action-4.ts](src/devices/dji-action-4.ts) as the example. It implements `DeviceAdapter` from [types.ts](src/devices/types.ts):
    - `canRead(clip)` says whether a file is from your device. It must be quick and must not throw.
    - `readMotion(clip, hz)` returns the camera's turn rate, positive clockwise. Note that the sign matters.
+   - `readSensors(clip)` is optional. It returns anything else the camera recorded, on the clip's own clock, such as ISO or orientation. A reading here replaces any estimate from GPS. See [dji-neo.ts](src/devices/dji-neo.ts).
 3. **List it** in [src/devices/index.ts](src/devices/index.ts), above `genericVideo`.
 4. **Add it to the table** in the README, saying what you tested.
 5. **Test it** on a clip with a matching FIT file and paste the `npm run sync` output in your pull request.

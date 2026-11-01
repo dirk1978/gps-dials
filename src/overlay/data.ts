@@ -21,6 +21,8 @@ const MIN_TURNING_SPEED = 2;
 const MOVING_SPEED = 0.5;
 const MAX_SPEED_POINTS = 3;
 const STOPPED_SPEED = 0.5;
+/** Sideways force, in m/s², that counts as being in a corner rather than following a bend in the road. */
+const CORNER_FORCE = 1.5;
 const MAX_LAUNCH_S = 60;
 const METRES_PER_KM = 1000;
 const METRES_PER_MILE = 1609.344;
@@ -246,6 +248,21 @@ function launchSeries(t: number[], speed: (number | null)[], target: number): (n
   });
 }
 
+/** The slowest point of the last finished corner, held until the next one is done. */
+function cornerSpeedSeries(speed: (number | null)[], lateral: (number | null)[]): (number | null)[] {
+  let apex: number | null = null;
+  let shown: number | null = null;
+  return speed.map((v, i) => {
+    if (Math.abs(lateral[i] ?? 0) >= CORNER_FORCE) {
+      if (v != null) apex = apex == null ? v : Math.min(apex, v);
+    } else if (apex != null) {
+      shown = apex;
+      apex = null;
+    }
+    return shown;
+  });
+}
+
 /** For recordings without a speed sensor, such as a drone's subtitle track. */
 function speedFromPositions(track: TrackColumns, distance: number[]): (number | null)[] {
   const n = track.t.length;
@@ -301,6 +318,7 @@ export function prepareOverlayData(track: TrackColumns, gradientSpan = DEFAULT_G
     splitKm: splitSeries(track.t, distance, METRES_PER_KM),
     splitMile: splitSeries(track.t, distance, METRES_PER_MILE),
     launchTime: launchSeries(track.t, speed, launchSpeed),
+    cornerSpeed: cornerSpeedSeries(speed, lateral),
   };
 
   const available = new Set<ChannelId>(CHANNELS.filter(c => c.clock).map(c => c.id));

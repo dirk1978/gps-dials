@@ -10,6 +10,7 @@ const run = promisify(execFile);
 const MAX_DEPTH = 3;
 const VIDEO = /\.(mp4|mov)$/i;
 const TRACK = /\.(fit|srt)$/i;
+const GPS_INSIDE = /^DJI NEO/i;
 /** A clip counts as belonging to a track if its clock is this close, because clocks can be hours out. */
 const MATCH_MARGIN_S = 2 * 3600 + 300;
 
@@ -18,6 +19,8 @@ export interface FolderClip {
   name: string;
   clockTime: number;
   duration: number;
+  /** What the file says recorded it. */
+  encoder?: string;
   /** The sync saved beside this clip last time, if any. */
   saved?: SavedClipSync;
 }
@@ -43,6 +46,8 @@ export interface FolderTrack {
   clips: number;
 }
 
+const stemOf = (path: string) => path.slice(0, -extname(path).length).toLowerCase();
+
 function listFiles(dir: string, depth = 0): string[] {
   const files: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -55,11 +60,11 @@ function listFiles(dir: string, depth = 0): string[] {
 
 async function readClip(path: string): Promise<FolderClip | null> {
   try {
-    const { stdout } = await run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration:format_tags=creation_time', '-of', 'json', path]);
+    const { stdout } = await run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration:format_tags=creation_time,encoder', '-of', 'json', path]);
     const { format } = JSON.parse(stdout);
     const clockTime = Date.parse(format.tags?.creation_time) / 1000;
     if (Number.isNaN(clockTime)) return null;
-    return { path, name: basename(path), clockTime, duration: Number(format.duration), saved: readSaved(path) };
+    return { path, name: basename(path), clockTime, duration: Number(format.duration), encoder: format.tags?.encoder, saved: readSaved(path) };
   } catch {
     return null;
   }
@@ -110,6 +115,10 @@ export async function scanFolder(dir: string): Promise<{ clips: FolderClip[]; tr
   const files = listFiles(dir);
   const found = await Promise.all(files.filter(f => VIDEO.test(f)).map(readClip));
   const clips = found.filter((c): c is FolderClip => c != null).sort((a, b) => a.clockTime - b.clockTime);
-  const tracks = files.filter(f => TRACK.test(f)).map(f => readTrack(f, clips)).filter((t): t is FolderTrack => t != null);
+  const trackFiles = files.filter(f => TRACK.test(f));
+  // A drone's clip with no subtitles beside it still has its GPS inside.
+  const stems = new Set(trackFiles.map(f => stemOf(f)));
+  const inside = clips.filter(c => GPS_INSIDE.test(c.encoder ?? '') && !stems.has(stemOf(c.path))).map(c => c.path);
+  const tracks = [...trackFiles, ...inside].map(f => readTrack(f, clips)).filter((t): t is FolderTrack => t != null);
   return { clips, tracks: rankTracks(tracks) };
 }

@@ -10,7 +10,7 @@ function drawFitted(ctx: Ctx, image: CanvasImageSource, x: number, y: number, w:
   ctx.drawImage(image, x + (w - iw * scale) / 2, y + (h - ih * scale) / 2, iw * scale, ih * scale);
 }
 
-/** A gauge from your own pictures: a dial face, and a needle pointing up that turns with the value. */
+/** Your own pictures: a logo that stays put, one that fills or grows with the value, or a dial face with a turning needle. */
 export const imageGauge: DisplayDef = {
   id: 'image',
   label: 'Your own image',
@@ -18,9 +18,24 @@ export const imageGauge: DisplayDef = {
     const { ctx, box, style, value, valueText, tiles } = env;
     const face = style.imageDial ? tiles?.image(style.imageDial) : null;
     const needle = style.imageNeedle ? tiles?.image(style.imageNeedle) : null;
-    if (face) drawFitted(ctx, face, box.x, box.y, box.w, box.h);
+    const share = fraction(style, value ?? style.min);
+    if (face && style.imageMode === 'fill') {
+      // Reveals the picture from the left as the value climbs.
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(box.x, box.y, box.w * share, box.h);
+      ctx.clip();
+      drawFitted(ctx, face, box.x, box.y, box.w, box.h);
+      ctx.restore();
+    } else if (face && style.imageMode === 'scale') {
+      const w = box.w * share;
+      const h = box.h * share;
+      if (w > 0 && h > 0) drawFitted(ctx, face, box.x + (box.w - w) / 2, box.y + (box.h - h) / 2, w, h);
+    } else if (face) {
+      drawFitted(ctx, face, box.x, box.y, box.w, box.h);
+    }
     if (needle) {
-      const angle = style.startAngle + style.sweepAngle * fraction(style, value ?? style.min) * (style.reverse ? -1 : 1);
+      const angle = style.startAngle + style.sweepAngle * share * (style.reverse ? -1 : 1);
       ctx.save();
       ctx.translate(box.x + box.w / 2, box.y + box.h / 2);
       // Angles start from the right, and the picture points up.

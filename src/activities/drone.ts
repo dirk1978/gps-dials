@@ -4,7 +4,7 @@ import type { ActivityDef } from './types.ts';
 export const drone: ActivityDef = {
   id: 'drone',
   name: 'Drone',
-  extensions: ['.srt'],
+  extensions: ['.srt', '.mp4', '.mov'],
   channels: ['height', 'speed', 'maxSpeed', 'verticalSpeed', 'heading', 'leanAngle', 'pitch', 'homeDistance', 'altitude', 'distance', 'latitude', 'longitude', 'clipTime', 'timeOfDay', 'date'],
   layout: layout('Drone', [
     ['distance', 'map', LEFT, 0.025, MAP_W, MAP_H, { mapMode: 'fitClip', fullRide: false, markerStyle: 'arrow' }],

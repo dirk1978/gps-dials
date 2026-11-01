@@ -1,4 +1,5 @@
 import type { TrackColumns } from '../../sync/timeline.ts';
+import type { ChannelId } from '../channels.ts';
 import { rgba, type Ctx, type DrawEnv } from './common.ts';
 
 type Project = (i: number) => [number, number];
@@ -34,6 +35,53 @@ function strokeLine(ctx: Ctx, project: Project, from: number, to: number, minPix
   ctx.stroke();
 }
 
+const ranges = new WeakMap<object, [number, number]>();
+
+/** The usual span of a series, ignoring the odd spike so it doesn't wash out everything else. */
+function usualRange(values: (number | null)[]): [number, number] {
+  let range = ranges.get(values);
+  if (!range) {
+    const sorted = values.filter(v => v != null).sort((a, b) => a - b);
+    range = [sorted[Math.floor(sorted.length * 0.05)] ?? 0, sorted[Math.floor(sorted.length * 0.95)] ?? 1];
+    ranges.set(values, range);
+  }
+  return range;
+}
+
+function blend(from: string, to: string, share: number): string {
+  const channels = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+  const a = channels(from);
+  const b = channels(to);
+  return `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * share)).join(', ')})`;
+}
+
+/** The ridden line one short piece at a time, each coloured by the data at that point. */
+function strokeByValue(env: DrawEnv, project: Project, from: number, to: number, minPixels: number, width: number, head: [number, number]): void {
+  const { ctx, style, data } = env;
+  const values = data.series[style.routeColorBy as ChannelId] ?? [];
+  const [low, high] = usualRange(values);
+  ctx.lineWidth = width;
+  ctx.lineCap = 'round';
+  const colorAt = (i: number) => blend(style.color, style.color2, high > low ? Math.min(1, Math.max(0, ((values[i] ?? low) - low) / (high - low))) : 0);
+  let [lastX, lastY] = project(from);
+  for (let i = from + 1; i <= to; i++) {
+    const [x, y] = project(i);
+    if (i < to && Math.abs(x - lastX) + Math.abs(y - lastY) < minPixels) continue;
+    ctx.strokeStyle = colorAt(i);
+    ctx.beginPath();
+    ctx.moveTo(lastX, lastY);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    lastX = x;
+    lastY = y;
+  }
+  ctx.strokeStyle = colorAt(to);
+  ctx.beginPath();
+  ctx.moveTo(lastX, lastY);
+  ctx.lineTo(...head);
+  ctx.stroke();
+}
+
 /**
  * The track, split into the part ridden and the part to come, each with an optional
  * outline. `head` is the exact current position, so the ridden line reaches the marker
@@ -52,7 +100,8 @@ export function drawRoute(env: DrawEnv, project: Project, from: number, to: numb
   }
   // Nearly solid, or the dark outline beneath it shows through and the line reads as black.
   if (style.showRemaining) strokeLine(ctx, project, from, to, minPixels, rgba(style.trackColor, Math.max(style.trackOpacity, 0.92)), width);
-  strokeLine(ctx, project, from, ridden, minPixels, style.color, width, head);
+  if (style.routeColorBy) strokeByValue(env, project, from, ridden, minPixels, width, head);
+  else strokeLine(ctx, project, from, ridden, minPixels, style.color, width, head);
 }
 
 /** Your position, as a dot, ring or arrow. `angle` is the direction of travel on screen, in radians from up. */

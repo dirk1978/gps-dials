@@ -98,6 +98,8 @@ export interface Style {
   /** Pictures for a home-made gauge, kept in the layout so it travels with it. */
   imageDial: string;
   imageNeedle: string;
+  /** How the face follows the value when there's no needle. */
+  imageMode: 'still' | 'fill' | 'scale';
 
   graphAxis: 'time' | 'distance';
   windowMetres: number;
@@ -113,6 +115,8 @@ export interface Style {
   routeWidth: number;
   routeOutlineColor: string;
   routeOutlineWidth: number;
+  /** Data to colour the route by, from the main colour at its lowest to the gradient end at its highest. */
+  routeColorBy: '' | 'speed' | 'gradient' | 'altitude' | 'heartRate' | 'power';
   dotSize: number;
   markerStyle: 'dot' | 'ring' | 'arrow';
   markerColor: string;
@@ -205,11 +209,11 @@ const BASE_STYLE: Style = {
   thickness: 0.085, roundEnds: false, startAngle: 135, sweepAngle: 270, reverse: false, showNeedle: true, needleLength: 0.74, needleWidth: 0.04, showHub: true,
   orientation: 'horizontal',
   compassMode: 'card',
-  tapeSteps: 4, skyColor: '#3f7fc4', groundColor: '#7a5533', scopeRange: 0.6, trailSeconds: 4, statsSpan: 'soFar', imageDial: '', imageNeedle: '',
+  tapeSteps: 4, skyColor: '#3f7fc4', groundColor: '#7a5533', scopeRange: 0.6, trailSeconds: 4, statsSpan: 'soFar', imageDial: '', imageNeedle: '', imageMode: 'still',
   graphAxis: 'time', windowMetres: 2000,
   windowSeconds: 60, fillArea: true, lineWidth: 3, showMarker: true,
   useZones: false, zones: [], hideWhenNoData: true,
-  routeWidth: 5, routeOutlineColor: '#000000', routeOutlineWidth: 1.5, dotSize: 8, markerStyle: 'dot', markerColor: '', showRemaining: true, zoomToClip: false, fullRide: true, profileSmoothing: 40,
+  routeWidth: 5, routeOutlineColor: '#000000', routeOutlineWidth: 1.5, routeColorBy: '', dotSize: 8, markerStyle: 'dot', markerColor: '', showRemaining: true, zoomToClip: false, fullRide: true, profileSmoothing: 40,
   mapProvider: 'osm', mapCustomUrl: '', mapCredit: '', mapMode: 'follow', mapZoom: 16.5, mapRotate: false, mapShape: 'rounded',
   mapOpacity: 1, mapDarken: 0, mapSaturation: 1, mapBrightness: 1, mapContrast: 1,
 };

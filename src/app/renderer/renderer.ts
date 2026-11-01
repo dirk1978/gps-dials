@@ -166,6 +166,8 @@ let exporting = false;
 const exportProgress = new Map<string, BatchProgress>();
 let template: Template = layoutFor('cycling');
 let syncing = false;
+/** Tracks recorded by a drone along with one clip, in its subtitles or inside the video. */
+const OWN_TRACK = /\.(srt|mp4|mov)$/i;
 /** What the open clip's camera recorded about itself. */
 let clipSensors: ClipSensors | null = null;
 const SYNC_CANCELLED = 'Sync cancelled. Nothing was changed.';
@@ -697,7 +699,7 @@ const BASIS_TEXT: Record<SessionResult['basis'], string> = {
   'guided by other clips': 'Matched from camera movement and the rest of the day.',
   'own motion': 'Matched from camera movement.',
   'set by hand': 'Set by hand. This changes this clip only.',
-  'from its own subtitles': 'Exact, from the subtitle file recorded with this clip.',
+  'from its own subtitles': 'Exact, from the GPS recorded with this clip.',
 };
 
 const CLIP_LABELS: Record<SessionResult['basis'], string> = {
@@ -883,7 +885,7 @@ async function runAutoSync(): Promise<void> {
     const seconds = () => ((performance.now() - started) / 1000).toFixed(0);
     const day = clipsForTrack();
     // A drone track belongs to one clip exactly, so it takes the same route as a whole folder.
-    const droneClips = /\.srt$/i.test(track.path) ? (clip ? [clip.path] : day.map(c => c.path)) : null;
+    const droneClips = OWN_TRACK.test(track.path) ? (clip ? [clip.path] : day.map(c => c.path)) : null;
     if (droneClips || day.length > 1 || (day.length === 1 && !clip)) {
       const results = await api.autoSync({ clips: droneClips ?? day.map(c => c.path), trackPath: track.path });
       if (!results) {
@@ -1073,7 +1075,7 @@ function listClip(loaded: Clip): void {
 /** A clip's own drone track beats whatever is selected, unless that track covers the clip anyway. */
 function shouldUseOwnTrack(loaded: Clip): boolean {
   if (!loaded.ownTrack || loaded.ownTrack === track?.path) return false;
-  if (!track || /\.srt$/i.test(track.path)) return true;
+  if (!track || OWN_TRACK.test(track.path)) return true;
   const { t } = track.columns;
   return loaded.clockTime < t[0] - TRACK_MATCH_MARGIN_S || loaded.clockTime > t[t.length - 1] + TRACK_MATCH_MARGIN_S;
 }

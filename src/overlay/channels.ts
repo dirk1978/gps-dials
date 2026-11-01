@@ -8,7 +8,7 @@ export type ChannelId =
   | 'distance' | 'remaining' | 'homeDistance' | 'rideTime' | 'clipTime' | 'timeOfDay'
   | 'progress' | 'averageSpeed' | 'maxSpeed' | 'accelForward' | 'accelLateral' | 'gForce' | 'leanAngle'
   | 'heartZone' | 'powerZone' | 'latitude' | 'longitude' | 'date'
-  | 'lapNumber' | 'lapTime' | 'lastLap' | 'bestLap' | 'splitKm' | 'splitMile' | 'launchTime'
+  | 'lapNumber' | 'lapTime' | 'lastLap' | 'bestLap' | 'splitKm' | 'splitMile' | 'launchTime' | 'cornerSpeed'
   | 'pitch' | 'iso' | 'shutter' | 'aperture' | 'whiteBalance';
 
 export type ChannelFormat = 'number' | 'duration' | 'clock' | 'compass' | 'date' | 'shutter' | 'aperture';
@@ -79,6 +79,7 @@ export const CHANNELS: ChannelDef[] = [
   { id: 'splitKm', label: 'Last kilometre', units: plain(''), min: 0, max: 600, step: 60, decimals: 0, format: 'duration' },
   { id: 'splitMile', label: 'Last mile', units: plain(''), min: 0, max: 900, step: 60, decimals: 0, format: 'duration' },
   { id: 'launchTime', label: 'Standing start', units: plain('s'), min: 0, max: 30, step: 5, decimals: 1, format: 'number' },
+  { id: 'cornerSpeed', label: 'Corner speed', units: SPEED_UNITS, min: 0, max: 45, step: 5, decimals: 1, format: 'number' },
   { id: 'pitch', label: 'Pitch', units: plain('°'), min: -30, max: 30, step: 10, decimals: 0, format: 'number' },
   { id: 'iso', label: 'ISO', units: plain(''), min: 100, max: 6400, step: 1000, decimals: 0, format: 'number' },
   { id: 'shutter', label: 'Shutter speed', units: plain(''), min: 0, max: 0.04, step: 0.01, decimals: 0, format: 'shutter' },

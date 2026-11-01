@@ -35,9 +35,19 @@ Transparent overlays run at 10 frames a second, the rate the dials update, which
 
 ## Design your own overlay
 
-The **Design** tab works straight on top of your footage. Any data can be shown any way: speed, pace, heart rate, cadence, power, temperature, altitude, gradient, climbing, heading, distance or time, as a dial, arc, bar, number, graph, road profile, route or custom text.
+The **Design** tab works straight on top of your footage. Any data can be shown any way:
 
-The app recognises cycling, running, drone, boating and flying recordings and starts with a layout to suit, leaving out anything your file has no data for. Heart rate and power zones come from your own max heart rate and FTP, set in the Theme panel.
+- **Data:** speed, average and top speed, pace, heart rate, cadence, power, zones, temperature, altitude, gradient, climbing, climb rate, heading, distance, progress, coordinates, time and date.
+- **Forces:** lean angle, pitch, G-force, acceleration, cornering force and corner speed.
+- **Timing:** laps from your device, kilometre and mile splits, and a standing start timer to a speed you choose.
+- **Camera:** ISO, shutter speed, aperture and white balance.
+- **Displays:** dial, zero-centre dial, arc, compass, sliding tape, tilt indicator, artificial horizon, G-force scope, bar, zone blocks, number, min, average and max, graph over time or distance, road profile, map, route and custom text. Your own images can be a logo, a dial and needle, or a picture that fills or grows with the value.
+
+The data lists show what matters for your activity first.
+
+The app recognises cycling, running, drone, boating and flying recordings and starts with a layout to suit. Each gauge has a next best choice, so where your file has no power data, for example, the space shows G-force instead. If you change a layout, the app leaves it as it is. Heart rate and power zones come from your own max heart rate and FTP, set in the Theme panel.
+
+Lean angle and G-force are worked out from GPS, which updates about once a second, so they smooth out quick movements. Where a camera records its own orientation, its reading is used instead. On a helmet, that follows your head rather than the bike. Drones report which way they're pointing, so a drone's compass shows that rather than its direction of travel.
 
 Start from one of the built-in presets, or from nothing. Drag and resize on the picture, with snapping to the centre and to other widgets. Each widget has its own colours, thickness, size, opacity, fonts, scale, ticks, colour zones and more, and a theme sets everything you haven't changed yourself. Layouts can be saved and shared as files.
 
@@ -78,17 +88,18 @@ npm run sync -- path/to/clip.mp4 path/to/activity.fit
 
 ## Supported devices
 
-| Device | Motion data | Status |
-|---|---|---|
-| DJI Osmo Action 4 | Orientation track, plus vibration | Tested on a 72-clip ride, with Garmin and Wahoo tracks |
-| Insta360 GO 3 | Picture motion | Tested on one 26-minute clip |
-| DJI Neo | Picture motion, or use its `.SRT` track directly | SRT reading tested; sync not tested |
-| Anything else | Picture motion | Should work; not tested |
+| Device | Motion data | Camera data | Status |
+|---|---|---|---|
+| DJI Osmo Action 4 | Orientation track, plus vibration | Lean, pitch, ISO, shutter, white balance | Tested on a 72-clip ride, with Garmin and Wahoo tracks |
+| Insta360 GO 3 | Picture motion | Shutter | Tested on one 26-minute clip |
+| DJI Neo | Its own GPS track, so sync is exact | Heading, roll, pitch, ISO, shutter, aperture, white balance | Tested on one flight, with and without its `.SRT` file |
+| Anything else | Picture motion | None | Should work; not tested |
 
 | Track format | Status |
 |---|---|
-| FIT | Supported |
+| FIT, including laps | Supported |
 | DJI `.SRT` | Supported |
+| GPS inside a DJI Neo video | Supported |
 | GPX | Wanted |
 
 ## Add your camera

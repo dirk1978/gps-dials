@@ -45,7 +45,7 @@ export const FIELDS: Field[] = [
   { section: 'Background', key: 'borderWidth', label: 'Border width', kind: 'range', min: 0, max: 10, step: 0.5 },
   { section: 'Background', key: 'cornerRadius', label: 'Corner radius', kind: 'range', min: 0, max: 80, step: 1 },
 
-  { section: 'Value and text', key: 'showValue', label: 'Show value', kind: 'toggle', only: READOUTS },
+  { section: 'Value and text', key: 'showValue', label: 'Show value', kind: 'toggle', only: [...READOUTS, 'image'] },
   { section: 'Value and text', key: 'showLabel', label: 'Show label', kind: 'toggle', only: READOUTS },
   { section: 'Value and text', key: 'showUnits', label: 'Show units', kind: 'toggle', only: READOUTS },
   { section: 'Value and text', key: 'labelText', label: 'Label text', kind: 'text', only: READOUTS },
@@ -92,6 +92,7 @@ export const FIELDS: Field[] = [
   { section: 'Shape', key: 'trailSeconds', label: 'Trail (seconds)', kind: 'range', min: 0, max: 20, step: 1, only: ['scope'] },
   { section: 'Shape', key: 'statsSpan', label: 'Worked out over', kind: 'select', options: [['soFar', 'The clip so far'], ['clip', 'The whole clip']], only: ['stats'] },
   { section: 'Image', key: 'imageDial', label: 'Dial face', kind: 'image', only: ['image'], hint: 'A PNG with a clear background works best.' },
+  { section: 'Image', key: 'imageMode', label: 'Picture', kind: 'select', options: [['still', 'Stays still'], ['fill', 'Fills with the value'], ['scale', 'Grows with the value']], only: ['image'] },
   { section: 'Image', key: 'imageNeedle', label: 'Needle', kind: 'image', only: ['image'], hint: 'Pointing straight up and centred in its picture. It turns around the middle.' },
 
   { section: 'Needle', key: 'showNeedle', label: 'Show needle', kind: 'toggle', only: ['dial', 'vsi'] },
@@ -100,6 +101,7 @@ export const FIELDS: Field[] = [
   { section: 'Needle', key: 'needleWidth', label: 'Width', kind: 'range', min: 0.005, max: 0.15, step: 0.005, only: NEEDLES },
   { section: 'Needle', key: 'showHub', label: 'Show centre', kind: 'toggle', only: ['dial', 'vsi'] },
 
+  { section: 'Map', key: 'routeColorBy', label: 'Colour route by', kind: 'select', options: [['', 'One colour'], ['speed', 'Speed'], ['gradient', 'Gradient'], ['altitude', 'Altitude'], ['heartRate', 'Heart rate'], ['power', 'Power']], only: ROUTES },
   { section: 'Graph', key: 'graphAxis', label: 'Along the bottom', kind: 'select', options: [['time', 'Time'], ['distance', 'Distance']], only: ['graph'] },
   { section: 'Graph', key: 'windowMetres', label: 'Distance shown (metres)', kind: 'range', min: 100, max: 20000, step: 100, only: ['graph'] },
   { section: 'Graph', key: 'windowSeconds', label: 'Time shown (seconds)', kind: 'range', min: 5, max: 900, step: 5, only: ['graph'] },
