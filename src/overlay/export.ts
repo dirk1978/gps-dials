@@ -63,16 +63,22 @@ function encoderArgs(format: OverlayFormat, fps: string, duration: number): stri
   return ['-vf', `fps=${fps}`, '-t', String(duration), '-pix_fmt', 'yuv420p', ...bestH264Encoder().args];
 }
 
-const require = createRequire(join(process.cwd(), 'package.json'));
 const FONT_FILES = ['600-normal', '700-normal', '600-italic', '700-italic'];
 let fontsReady = false;
+
+/** The app points this at its own copy of the fonts. Running from source, they're in node_modules. */
+function fontPath(file: string): string {
+  const dir = process.env.GPS_DIALS_FONT_DIR;
+  if (dir) return join(dir, file);
+  return createRequire(join(process.cwd(), 'package.json')).resolve(`@fontsource/barlow-condensed/files/${file}`);
+}
 
 /** The export has no browser to load the display font, so it registers the same files. */
 function registerFonts(): void {
   if (fontsReady) return;
   GlobalFonts.loadSystemFonts();
   for (const weight of FONT_FILES) {
-    GlobalFonts.registerFromPath(require.resolve(`@fontsource/barlow-condensed/files/barlow-condensed-latin-${weight}.woff2`), 'Barlow Condensed');
+    GlobalFonts.registerFromPath(fontPath(`barlow-condensed-latin-${weight}.woff2`), 'Barlow Condensed');
   }
   fontsReady = true;
 }

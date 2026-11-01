@@ -1,8 +1,11 @@
 {
   "name": "gps-dials",
+  "productName": "GPS Dials",
   "version": "0.1.0",
   "private": true,
   "description": "Free, open-source telemetry overlays for action camera footage",
+  "author": "dirk1978",
+  "homepage": "https://github.com/dirk1978/gps-dials",
   "license": "MIT",
   "repository": "github:dirk1978/gps-dials",
   "type": "module",
@@ -13,18 +16,71 @@
   "scripts": {
     "app": "node scripts/build.mjs && electron .",
     "build": "node scripts/build.mjs",
+    "dist": "node scripts/build.mjs && electron-builder --publish never",
     "sync": "node src/sync/cli.ts",
     "overlay": "node src/overlay/cli.ts",
     "test": "node --test \"src/**/*.test.ts\""
   },
   "dependencies": {
-    "@fontsource/barlow-condensed": "^5.3.0",
-    "@napi-rs/canvas": "^1.1.0",
-    "leaflet": "^1.9.4"
+    "@napi-rs/canvas": "^1.1.0"
   },
   "devDependencies": {
+    "@fontsource/barlow-condensed": "^5.3.0",
     "@types/leaflet": "^1.9.22",
     "electron": "^45.2.1",
-    "esbuild": "^0.28.2"
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.28.2",
+    "leaflet": "^1.9.4"
+  },
+  "build": {
+    "appId": "uk.dirk1978.gpsdials",
+    "directories": {
+      "buildResources": "build",
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "extraResources": [
+      {
+        "from": "vendor/ffmpeg",
+        "to": "bin"
+      }
+    ],
+    "artifactName": "GPS-Dials-${version}-${os}-${arch}.${ext}",
+    "publish": {
+      "provider": "github",
+      "owner": "dirk1978",
+      "repo": "gps-dials"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.video",
+      "identity": "-"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "AudioVideo",
+      "maintainer": "dirk1978"
+    }
   }
 }

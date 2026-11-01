@@ -34,6 +34,10 @@ Each display type is one file in `src/overlay/displays/`, using [counter.ts](src
 
 Add it to the list in [channels.ts](src/overlay/channels.ts), with its units and default scale, and work out its values in [data.ts](src/overlay/data.ts). Every display type can then show it.
 
+## Making a release
+
+Update the version in `package.json`, then push a matching tag such as `v0.2.0`. GitHub Actions tests it and builds every installer, and they appear on the Releases page.
+
 ## Rules for pull requests
 
 - **Never commit footage or real activity files.** GPS tracks reveal where people live and ride. Tests use small made-up data instead, as in [fit.test.ts](src/activity/fit.test.ts).

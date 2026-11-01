@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, delimiter, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { BrowserWindow, app, dialog, ipcMain, protocol, safeStorage, session, utilityProcess } from 'electron';
 import { COMBINED_EXTENSION, writeCombined } from '../activity/combined.ts';
@@ -22,6 +22,10 @@ const MEDIA_SCHEME = 'gpsdials-media';
 const TILE_HOST = 'tile.openstreetmap.org';
 const TERRAIN_SPACING_M = 200;
 const PROJECT_URL = 'https://github.com/dirk1978/gps-dials';
+
+// Everything spawned from here, including the worker processes, finds these through the environment.
+process.env.GPS_DIALS_FONT_DIR = join(__dirname, 'fonts');
+if (app.isPackaged) process.env.PATH = `${join(process.resourcesPath, 'bin')}${delimiter}${process.env.PATH}`;
 
 protocol.registerSchemesAsPrivileged([{ scheme: MEDIA_SCHEME, privileges: { stream: true, supportFetchAPI: true, standard: true, secure: true } }]);
 

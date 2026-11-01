@@ -10,6 +10,7 @@ export const H264_ENCODERS: H264Encoder[] = [
   { name: 'NVIDIA GPU', args: ['-c:v', 'h264_nvenc', '-preset', 'p3', '-rc', 'vbr', '-cq', '23', '-b:v', '0'] },
   { name: 'Intel GPU', args: ['-c:v', 'h264_qsv', '-preset', 'veryfast', '-global_quality', '23'] },
   { name: 'AMD GPU', args: ['-c:v', 'h264_amf', '-quality', 'speed', '-rc', 'cqp', '-qp_i', '23', '-qp_p', '23'] },
+  { name: 'Apple GPU', args: ['-c:v', 'h264_videotoolbox', '-q:v', '60'] },
   { name: 'CPU', args: ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23'] },
 ];
 

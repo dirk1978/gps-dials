@@ -6,6 +6,18 @@ It is a community replacement for the workflow of Garmin VIRB Edit and paid over
 
 > **Status: early but working.** Sync, the layout editor, source comparison and overlay export all work. Expect rough edges, and tell us what you find.
 
+## Download
+
+Get the latest version from the [Releases page](https://github.com/dirk1978/gps-dials/releases). Everything it needs is included, so there's nothing else to install.
+
+| System | File |
+|---|---|
+| Windows 10 or 11 (64-bit) | `.exe` installer |
+| macOS on Apple silicon | `.dmg` |
+| Linux | `.AppImage` or `.deb` |
+
+The downloads aren't commercially code-signed yet, so your system will warn you. On Windows, choose **More info**, then **Run anyway**. On a Mac, right-click the app and choose **Open**, or allow it under **Privacy & Security** in System Settings.
+
 ## The workflow
 
 1. Copy a day's videos and FIT files into a folder and open it.
@@ -36,7 +48,9 @@ Sync finds where a clip belongs in an activity by comparing the camera's turning
 
 Clips can also be lined up by hand: find a frame you recognise, click that spot on the track and match them. The track still works if map images can't load.
 
-Requires [Node.js](https://nodejs.org/) 24 or later and [FFmpeg](https://ffmpeg.org/) on your PATH. Previews and green screen exports use the GPU when they can. NVIDIA is tested; Intel and AMD are built in but not yet tested on real hardware, and anything else falls back to the CPU.
+Previews and green screen exports use the GPU when they can. NVIDIA is tested; Intel, AMD and Apple are built in but not yet tested on real hardware, and anything else falls back to the CPU.
+
+To run from source instead, you need [Node.js](https://nodejs.org/) 24 or later and [FFmpeg](https://ffmpeg.org/) on your PATH.
 
 ```bash
 npm install
@@ -70,4 +84,4 @@ Device support is built by the community, and each device is one small file. See
 
 ## Licence
 
-[MIT](LICENSE). The Barlow Condensed typeface is used under the SIL Open Font License. FFmpeg is a separate program with its own licence and is not included. This project is not affiliated with Garmin, DJI, Insta360, Wahoo or Telemetry Overlay.
+[MIT](LICENSE). The Barlow Condensed typeface is used under the SIL Open Font License. The downloads include FFmpeg as a separate program under the GPL, with its licence alongside it. Its source is available from [FFmpeg](https://ffmpeg.org/download.html#get-sources), and the builds come from [BtbN](https://github.com/BtbN/FFmpeg-Builds) and [ffmpeg-static](https://github.com/eugeneware/ffmpeg-static). This project is not affiliated with Garmin, DJI, Insta360, Wahoo or Telemetry Overlay.
