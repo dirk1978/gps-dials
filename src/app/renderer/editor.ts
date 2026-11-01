@@ -22,6 +22,7 @@ type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 
 const HANDLES: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 const SNAP = 0.006;
+const SIZE_SNAP = 0.008;
 const MIN_SIZE = 0.02;
 const NUDGE = 0.002;
 const HISTORY_LIMIT = 100;
@@ -62,6 +63,8 @@ export function createEditor(host: EditorHost) {
   let future: string[] = [];
   let saved = JSON.stringify(host.template());
   let openSections = new Set(['Data', 'Look', 'Theme']);
+  /** Shown beside the selection while resizing. */
+  let sizeNote = '';
 
   const current = () => host.template().widgets.find(w => w.id === selected) ?? null;
 
@@ -123,6 +126,34 @@ export function createEditor(host: EditorHost) {
       dot.dataset.handle = handle;
       box.append(dot);
     }
+    if (sizeNote) box.append(el('span', { className: 'size-note', textContent: sizeNote }));
+    layer.append(box);
+  }
+
+  /** Another visible widget this size is close to, checking only the sides being changed. */
+  function sameSizeAs(moving: Widget, width: number, height: number, checkWidth: boolean, checkHeight: boolean): Widget | null {
+    let best: Widget | null = null;
+    let closest = SIZE_SNAP;
+    for (const w of host.template().widgets) {
+      if (w.id === moving.id || w.hidden) continue;
+      const gaps = [checkWidth ? Math.abs(w.width - width) : 0, checkHeight ? Math.abs(w.height - height) : 0];
+      const gap = Math.max(...gaps);
+      if (gap < closest) {
+        closest = gap;
+        best = w;
+      }
+    }
+    return best;
+  }
+
+  /** Outlines the widget being matched, so it's clear which one the size came from. */
+  function showTwin(twin: Widget | null): void {
+    layer.querySelectorAll('.twin').forEach(n => n.remove());
+    if (!twin) return;
+    const box = el('div', { className: 'twin' });
+    Object.assign(box.style, {
+      left: `${twin.x * 100}%`, top: `${twin.y * 100}%`, width: `${twin.width * 100}%`, height: `${twin.height * 100}%`,
+    });
     layer.append(box);
   }
 
@@ -221,12 +252,19 @@ export function createEditor(host: EditorHost) {
         }
         // Dials are round, so corner drags keep their shape unless Shift is held.
         const corner = handle.length === 2;
-        if (corner && !e.shiftKey) {
-          height = width / ratio;
-          if (handle.includes('n')) y = origin.y + origin.height - height;
+        const keepShape = corner && !e.shiftKey;
+        if (keepShape) height = width / ratio;
+        const twin = e.altKey ? null : sameSizeAs(widget, width, height, keepShape || handle === 'e' || handle === 'w', keepShape || handle === 'n' || handle === 's');
+        if (twin) {
+          if (keepShape || handle.includes('e') || handle.includes('w')) width = twin.width;
+          if (keepShape || handle.includes('n') || handle.includes('s')) height = twin.height;
         }
+        if (handle.includes('w')) x = origin.x + origin.width - width;
+        if (handle.includes('n')) y = origin.y + origin.height - height;
         Object.assign(widget, { x, y, width, height });
         showGuides([], []);
+        sizeNote = twin ? `Same size as ${twin.name}` : `${(width * 100).toFixed(1)} × ${(height * 100).toFixed(1)}%`;
+        showTwin(twin);
       }
       changed();
       renderPosition();
@@ -234,6 +272,9 @@ export function createEditor(host: EditorHost) {
     const finish = () => {
       layer.removeEventListener('pointermove', move);
       showGuides([], []);
+      showTwin(null);
+      sizeNote = '';
+      renderSelection();
       commit();
     };
     layer.addEventListener('pointermove', move);
@@ -523,6 +564,19 @@ export function createEditor(host: EditorHost) {
       quick('Top', () => { widget.y = 0.03; }),
       quick('Middle', () => { widget.y = 0.5 - widget.height / 2; }),
       quick('Bottom', () => { widget.y = 0.97 - widget.height; }));
+    const others = host.template().widgets.filter(w => w.id !== widget.id);
+    const match = control('select', '', { choices: [['', 'Choose a widget'], ...others.map(w => [w.id, w.name] as [string, string])] }, v => {
+      const source = others.find(w => w.id === v);
+      if (!source) return;
+      // Stays anchored to its centre, so matching a size doesn't push it off the frame.
+      const cx = widget.x + widget.width / 2;
+      const cy = widget.y + widget.height / 2;
+      Object.assign(widget, { width: source.width, height: source.height, x: cx - source.width / 2, y: cy - source.height / 2 });
+      changed();
+    }, () => {
+      commit();
+      renderInspector();
+    });
     const copy = el('button', { textContent: 'Duplicate', type: 'button' });
     copy.addEventListener('click', () => duplicate(widget.id));
     const drop = el('button', { textContent: 'Delete', type: 'button' });
@@ -543,7 +597,7 @@ export function createEditor(host: EditorHost) {
 
     inspector.replaceChildren(
       section('Data', dataRows),
-      section('Position and size', [place('x', 'Left'), place('y', 'Top'), place('width', 'Width'), place('height', 'Height'), aligners]),
+      section('Position and size', [place('x', 'Left'), place('y', 'Top'), place('width', 'Width'), place('height', 'Height'), row('Same size as', match), aligners]),
       ...[...sections].map(([title, body]) => section(title, body)),
       el('div', { className: 'button-row' }, copy, wipe, drop),
     );

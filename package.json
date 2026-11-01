@@ -1,7 +1,7 @@
 {
   "name": "gps-dials",
   "productName": "GPS Dials",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "description": "Free, open-source telemetry overlays for action camera footage",
   "author": "dirk1978",

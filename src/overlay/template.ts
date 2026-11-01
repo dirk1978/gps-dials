@@ -105,6 +105,8 @@ export interface Style {
   showRemaining: boolean;
   zoomToClip: boolean;
   fullRide: boolean;
+  /** Metres of road a profile's shape is evened out over. */
+  profileSmoothing: number;
 
   mapProvider: string;
   mapCustomUrl: string;
@@ -180,8 +182,8 @@ const BASE_STYLE: Style = {
   orientation: 'horizontal',
   windowSeconds: 60, fillArea: true, lineWidth: 3, showMarker: true,
   useZones: false, zones: [], hideWhenNoData: true,
-  routeWidth: 5, routeOutlineColor: '#000000', routeOutlineWidth: 1.5, dotSize: 8, markerStyle: 'dot', markerColor: '', showRemaining: true, zoomToClip: false, fullRide: true,
-  mapProvider: 'osm', mapCustomUrl: '', mapCredit: '', mapMode: 'follow', mapZoom: 14, mapRotate: false, mapShape: 'rounded',
+  routeWidth: 5, routeOutlineColor: '#000000', routeOutlineWidth: 1.5, dotSize: 8, markerStyle: 'dot', markerColor: '', showRemaining: true, zoomToClip: false, fullRide: true, profileSmoothing: 40,
+  mapProvider: 'osm', mapCustomUrl: '', mapCredit: '', mapMode: 'follow', mapZoom: 16.5, mapRotate: false, mapShape: 'rounded',
   mapOpacity: 1, mapDarken: 0, mapSaturation: 1, mapBrightness: 1, mapContrast: 1,
 };
 

@@ -1,7 +1,7 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdirSync, renameSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { once } from 'node:events';
 import { GlobalFonts, createCanvas } from '@napi-rs/canvas';
 import type { TrackColumns } from '../sync/timeline.ts';
@@ -63,6 +63,8 @@ function encoderArgs(format: OverlayFormat, fps: string, duration: number): stri
   if (format === 'prores-alpha') {
     return ['-c:v', 'prores_ks', '-profile:v', '4444', '-pix_fmt', 'yuva444p10le', '-vendor', 'apl0', '-qscale:v', '11'];
   }
+  // PowerDirector's transparent format. Its ProRes support stops at 4:2:2, which has no alpha.
+  if (format === 'png-alpha') return ['-c:v', 'png', '-pix_fmt', 'rgba'];
   return ['-vf', `fps=${fps}`, '-t', String(duration), '-pix_fmt', 'yuv420p', ...bestH264Encoder().args];
 }
 
@@ -171,7 +173,13 @@ export async function renderOverlay(
     ffmpeg.stdin.end();
     const code = await finished;
     if (code !== 0) throw new Error(errors.trim() || `ffmpeg exited with ${code}`);
-    renameSync(partial, job.outPath);
+    try {
+      renameSync(partial, job.outPath);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'EBUSY' || code === 'EPERM') throw new Error(`${basename(job.outPath)} is open in another program, such as your video editor. Close it there and generate again.`);
+      throw error;
+    }
   } catch (error) {
     ffmpeg.kill();
     await finished.catch(() => {});

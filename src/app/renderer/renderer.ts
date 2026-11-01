@@ -593,7 +593,8 @@ async function generateOverlays(options: { outDir?: string; limit?: number } = {
     const format = $<HTMLSelectElement>('overlay-format').value as OverlayBatch['format'];
     const result = await api.exportOverlays({ items, trackPath: track.path, format, template, outDir: options.outDir });
     const minutes = ((performance.now() - started) / 60000).toFixed(1);
-    const failed = result.failed ? `, ${result.failed} failed` : '';
+    const reason = [...exportProgress.values()].find(p => p.state === 'failed')?.error;
+    const failed = result.failed ? `, ${result.failed} failed${reason ? `: ${reason}` : ''}` : '';
     const blank = result.missingTiles ? ` ${result.missingTiles} map images couldn't load, so parts of a map are blank.` : '';
     setStatus(`${result.cancelled ? 'Cancelled. ' : ''}${result.done} overlays in ${minutes} min${failed}. Saved in ${result.outDir}.${blank}`);
   } catch (error) {

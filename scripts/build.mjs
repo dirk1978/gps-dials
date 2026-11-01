@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { build } from 'esbuild';
 
 mkdirSync('dist', { recursive: true });
@@ -35,5 +35,6 @@ copyFileSync('src/app/renderer/index.html', 'dist/index.html');
 mkdirSync('dist/fonts', { recursive: true });
 for (const weight of ['600-normal', '700-normal', '600-italic', '700-italic']) {
   const file = `barlow-condensed-latin-${weight}.woff2`;
-  copyFileSync(`node_modules/@fontsource/barlow-condensed/files/${file}`, `dist/fonts/${file}`);
+  // A running copy of the app keeps these open, and they never change between builds.
+  if (!existsSync(`dist/fonts/${file}`)) copyFileSync(`node_modules/@fontsource/barlow-condensed/files/${file}`, `dist/fonts/${file}`);
 }

@@ -95,7 +95,7 @@ export const FIELDS: Field[] = [
   { section: 'Map', key: 'mapCustomUrl', label: 'Tile address', kind: 'text', only: ['map'], hint: 'For "Your own tile address". Use {z}, {x} and {y}, and include any key.' },
   { section: 'Map', key: 'mapCredit', label: 'Credit text', kind: 'text', only: ['map'], hint: 'The credit your tile provider requires.' },
   { section: 'Map', key: 'mapMode', label: 'Framing', kind: 'select', options: [['follow', 'Follow me'], ['fitClip', 'Fit this clip'], ['fitRide', 'Fit the whole activity']], only: ['map'] },
-  { section: 'Map', key: 'mapZoom', label: 'Zoom', kind: 'range', min: 5, max: 19, step: 0.25, only: ['map'], hint: 'Used when following you.' },
+  { section: 'Map', key: 'mapZoom', label: 'Zoom', kind: 'range', min: 5, max: 19, step: 0.25, only: ['map'], hint: 'Used when following you. Closer shows less area, but the map moves more.' },
   { section: 'Map', key: 'mapRotate', label: 'Turn with direction of travel', kind: 'toggle', only: ['map'], hint: 'Used when following you.' },
   { section: 'Map', key: 'mapShape', label: 'Shape', kind: 'select', options: [['rounded', 'Rounded'], ['square', 'Square'], ['circle', 'Circle']], only: ['map'] },
   { section: 'Map', key: 'mapOpacity', label: 'Map opacity', kind: 'range', min: 0, max: 1, step: 0.01, only: ['map'] },
@@ -112,6 +112,7 @@ export const FIELDS: Field[] = [
   { section: 'Track', key: 'dotSize', label: 'Marker size', kind: 'range', min: 1, max: 30, step: 0.5, only: [...ROUTES, 'graph'] },
   { section: 'Track', key: 'showRemaining', label: 'Show the part still to come', kind: 'toggle', only: TRACKS },
   { section: 'Track', key: 'fullRide', label: 'Whole activity', kind: 'toggle', only: TRACKS, hint: 'Off shows only the road around this clip.' },
+  { section: 'Track', key: 'profileSmoothing', label: 'Curve smoothing (m)', kind: 'range', min: 0, max: 200, step: 5, only: ['profile'], hint: 'Higher gives a softer curve. Zero shows every bump.' },
   { section: 'Track', key: 'zoomToClip', label: 'Zoom to this clip', kind: 'toggle', only: ['route'] },
 
   { section: 'Colour zones', key: 'useZones', label: 'Colour by value', kind: 'toggle', only: [...READOUTS] },

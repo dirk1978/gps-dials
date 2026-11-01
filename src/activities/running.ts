@@ -6,7 +6,7 @@ export const running: ActivityDef = {
   name: 'Running',
   fitSports: [1, 11, 17],
   layout: layout('Running', [
-    ['distance', 'map', LEFT, 0.025, MAP_W, MAP_H, { ...FOLLOW, mapZoom: 15 }],
+    ['distance', 'map', LEFT, 0.025, MAP_W, MAP_H, { ...FOLLOW, mapZoom: 17.5 }],
     ['distance', 'counter', 0.33, 0.025, 0.115, COUNTER_H],
     ['rideTime', 'counter', 0.445, 0.025, 0.115, COUNTER_H],
     ['ascent', 'counter', 0.56, 0.025, 0.115, COUNTER_H],

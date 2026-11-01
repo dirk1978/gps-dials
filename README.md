@@ -27,7 +27,8 @@ The downloads aren't commercially code-signed yet, so your system will warn you.
 
 | Format | Best for | Size at 4K |
 |---|---|---|
-| Transparent (ProRes 4444) | Editors with alpha support | About 0.5 GB a minute |
+| Transparent (PNG in MOV) | PowerDirector | About 0.3 GB a minute |
+| Transparent (ProRes 4444) | Resolve, Premiere, Final Cut | About 0.5 GB a minute |
 | Green screen (H.264) | Any editor with a chroma key | About 4 MB a minute |
 
 Transparent overlays run at 10 frames a second, the rate the dials update, which editors place correctly by time. Storing every frame would make them five times larger.

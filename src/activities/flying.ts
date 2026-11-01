@@ -6,7 +6,7 @@ export const flying: ActivityDef = {
   name: 'Flying',
   fitSports: [20, 26],
   layout: layout('Flying', [
-    ['distance', 'map', LEFT, 0.025, MAP_W, MAP_H, { mapMode: 'follow', mapZoom: 11, mapRotate: true, markerStyle: 'arrow' }],
+    ['distance', 'map', LEFT, 0.025, MAP_W, MAP_H, { mapMode: 'follow', mapZoom: 12.5, mapRotate: true, markerStyle: 'arrow' }],
     ['altitude', 'dial', RIGHT_DIAL, 0.025, DIAL_W, DIAL_H, { unit: 'ft', max: 10000, step: 2000 }],
     ['speed', 'dial', RIGHT_DIAL, BOTTOM_DIAL, DIAL_W, DIAL_H, { unit: 'kn', max: 160, step: 20 }],
     ['verticalSpeed', 'counter', LEFT, 0.84, 0.16, 0.135, { unit: 'fth', showSign: true }],

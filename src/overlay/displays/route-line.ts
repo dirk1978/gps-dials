@@ -3,18 +3,33 @@ import { rgba, type Ctx, type DrawEnv } from './common.ts';
 
 type Project = (i: number) => [number, number];
 
-const MAX_POINTS = 1500;
+/**
+ * The points worth drawing, chosen by how far apart they land on screen. Keeping a fixed
+ * share of the track looked fine zoomed out, but cut straight across bends zoomed in.
+ */
+export function visiblePoints(project: Project, from: number, to: number, minPixels: number): [number, number][] {
+  const points: [number, number][] = [project(from)];
+  let [lastX, lastY] = points[0];
+  for (let i = from + 1; i < to; i++) {
+    const point = project(i);
+    if (Math.abs(point[0] - lastX) + Math.abs(point[1] - lastY) < minPixels) continue;
+    points.push(point);
+    [lastX, lastY] = point;
+  }
+  if (to > from) points.push(project(to));
+  return points;
+}
 
-function strokeLine(ctx: Ctx, project: Project, from: number, to: number, step: number, color: string, width: number, end?: [number, number]): void {
+function strokeLine(ctx: Ctx, project: Project, from: number, to: number, minPixels: number, color: string, width: number, end?: [number, number]): void {
   if ((to <= from && !end) || width <= 0) return;
   ctx.strokeStyle = color;
   ctx.lineWidth = width;
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
   ctx.beginPath();
-  ctx.moveTo(...project(from));
-  for (let i = from + step; i < to; i += step) ctx.lineTo(...project(i));
-  ctx.lineTo(...project(to));
+  const [first, ...rest] = visiblePoints(project, from, to, minPixels);
+  ctx.moveTo(...first);
+  for (const point of rest) ctx.lineTo(...point);
   if (end) ctx.lineTo(...end);
   ctx.stroke();
 }
@@ -26,18 +41,18 @@ function strokeLine(ctx: Ctx, project: Project, from: number, to: number, step: 
  */
 export function drawRoute(env: DrawEnv, project: Project, from: number, to: number, now: number, head: [number, number]): void {
   const { ctx, style, unit } = env;
-  const step = Math.max(1, Math.floor((to - from) / MAX_POINTS));
+  const minPixels = unit;
   const width = style.routeWidth * unit;
   const outline = style.routeOutlineWidth * 2 * unit;
   const ridden = Math.min(to, now);
 
   if (outline > 0) {
-    if (style.showRemaining) strokeLine(ctx, project, from, to, step, style.routeOutlineColor, width + outline);
-    else strokeLine(ctx, project, from, ridden, step, style.routeOutlineColor, width + outline, head);
+    if (style.showRemaining) strokeLine(ctx, project, from, to, minPixels, style.routeOutlineColor, width + outline);
+    else strokeLine(ctx, project, from, ridden, minPixels, style.routeOutlineColor, width + outline, head);
   }
   // Nearly solid, or the dark outline beneath it shows through and the line reads as black.
-  if (style.showRemaining) strokeLine(ctx, project, from, to, step, rgba(style.trackColor, Math.max(style.trackOpacity, 0.92)), width);
-  strokeLine(ctx, project, from, ridden, step, style.color, width, head);
+  if (style.showRemaining) strokeLine(ctx, project, from, to, minPixels, rgba(style.trackColor, Math.max(style.trackOpacity, 0.92)), width);
+  strokeLine(ctx, project, from, ridden, minPixels, style.color, width, head);
 }
 
 /** Your position, as a dot, ring or arrow. `angle` is the direction of travel on screen, in radians from up. */
