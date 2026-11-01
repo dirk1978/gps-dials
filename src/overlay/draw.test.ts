@@ -6,7 +6,7 @@ import { CHANNELS } from './channels.ts';
 import { prepareOverlayData } from './data.ts';
 import { DISPLAYS } from './displays/index.ts';
 import { drawFrame, type Ctx, type FrameContext } from './draw.ts';
-import { THEMES, defaultTemplate, newWidget, normaliseTemplate, resolveStyle, type DisplayId, type Template } from './template.ts';
+import { FONTS, THEMES, defaultTemplate, newWidget, normaliseTemplate, resolveStyle, type DisplayId, type Template } from './template.ts';
 
 const track: TrackColumns = {
   t: Array.from({ length: 400 }, (_, i) => 1000 + i),
@@ -59,6 +59,38 @@ test('new profiles and graphs cover the whole ride, and saved windows stay', () 
   assert.equal(resolveStyle(newWidget('speed', 'graph'), THEMES[0]).graphSpan, 'ride');
   const saved = { ...newWidget('speed', 'graph'), style: { windowSeconds: 120 } };
   assert.equal(resolveStyle(saved, THEMES[0]).graphSpan, 'recent');
+});
+
+function contrast(a: string, b: string): number {
+  const luminance = (hex: string) => {
+    const [r, g, c] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(v => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * c;
+  };
+  const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (high + 0.05) / (low + 0.05);
+}
+
+test('every theme stays readable, and has a name and heading of its own', () => {
+  assert.equal(new Set(THEMES.map(t => t.name)).size, THEMES.length);
+  for (const theme of THEMES) {
+    assert.ok(theme.group, theme.name);
+    assert.ok(FONTS.includes(theme.font), theme.name);
+    if (theme.panelOpacity >= 0.4) {
+      assert.ok(contrast(theme.text, theme.panel) >= 4.5, `${theme.name} text`);
+      assert.ok(contrast(theme.muted, theme.panel) >= 3, `${theme.name} labels`);
+      assert.ok(contrast(theme.accent, theme.panel) >= 3, `${theme.name} accent`);
+    } else {
+      assert.ok(theme.shadow >= 3, `${theme.name} needs a shadow with no panel behind it`);
+    }
+  }
+});
+
+test('deepens zone colours on pale panels so they stay readable', () => {
+  const paper = THEMES.find(t => t.name === 'Paper')!;
+  const dark = resolveStyle(newWidget('gradient', 'counter'), THEMES[0]).zones[1].color;
+  const light = resolveStyle(newWidget('gradient', 'counter'), paper).zones[1].color;
+  assert.ok(contrast(light, paper.panel) > contrast(dark, paper.panel));
+  assert.ok(contrast(light, paper.panel) >= 2.5, light);
 });
 
 test('every theme draws the default layout', () => {

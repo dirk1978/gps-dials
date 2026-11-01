@@ -661,17 +661,41 @@ export function createEditor(host: EditorHost) {
 
   function themeInspector(): void {
     const t = host.template();
-    const picker = control('select', THEMES.some(x => x.name === t.theme.name) ? t.theme.name : '', {
-      choices: [['', 'Custom'], ...THEMES.map(x => [x.name, x.name] as [string, string])],
-    }, v => {
-      const theme = THEMES.find(x => x.name === v);
+    const apply = (theme: Theme | undefined) => {
       if (theme) t.theme = { ...theme };
       host.redraw();
-    }, () => {
+    };
+    const groups = [...new Set(THEMES.map(x => x.group))];
+    const picker = control('select', THEMES.some(x => x.name === t.theme.name) ? t.theme.name : '', {
+      choices: [['', 'Custom']],
+      groups: groups.map(group => el('optgroup', { label: group ?? '' }, ...THEMES.filter(x => x.group === group).map(x => el('option', { value: x.name, textContent: x.name })))),
+    }, v => apply(THEMES.find(x => x.name === v)), () => {
       commit();
       renderInspector();
     });
-    const rows: Node[] = [row('Theme', picker)];
+    const gallery = el('div', { className: 'theme-gallery' }, ...groups.flatMap(group => [
+      el('h4', { textContent: group ?? '' }),
+      ...THEMES.filter(x => x.group === group).map(theme => {
+        const sample = el('span', { className: 'theme-sample', textContent: '42' });
+        Object.assign(sample.style, {
+          background: theme.panelOpacity > 0.2 ? theme.panel : '#5c6b5a',
+          color: theme.text,
+          fontFamily: `"${theme.font}", Arial, sans-serif`,
+          fontStyle: theme.italic ? 'italic' : 'normal',
+          borderBottom: `4px solid ${theme.accent}`,
+          boxShadow: `inset -14px 0 0 ${theme.accent2}`,
+          borderRadius: `${Math.min(theme.cornerRadius, 12)}px`,
+        });
+        const button = el('button', { className: `theme-tile${theme.name === t.theme.name ? ' on' : ''}`, type: 'button', title: `Use ${theme.name}. You can undo this.` }, sample, theme.name);
+        button.addEventListener('click', () => {
+          apply(theme);
+          commit();
+          renderInspector();
+        });
+        return button;
+      }),
+    ]));
+    const rows: Node[] = [row('Theme', picker), gallery];
     for (const [key, label, kind] of THEME_FIELDS) {
       const ranges = key === 'panelOpacity' ? { min: 0, max: 1, step: 0.01 } : key === 'shadow' ? { min: 0, max: 30, step: 1 } : { min: 0, max: 80, step: 1 };
       const choices = key === 'font' ? FONTS.map(f => [f, f] as [string, string]) : undefined;

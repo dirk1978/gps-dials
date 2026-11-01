@@ -1,13 +1,17 @@
 import { channelDef, type ChannelId } from './channels.ts';
+import { THEMES } from './themes.ts';
 import { DEFAULT_RIDER, defaultZones, type Rider, type Zone } from './zones.ts';
 
 export type { Zone } from './zones.ts';
+export { THEMES };
 
 export type DisplayId = 'dial' | 'arc' | 'vsi' | 'compass' | 'tape' | 'tilt' | 'horizon' | 'scope' | 'bar' | 'zones' | 'graph' | 'counter' | 'stats' | 'text' | 'route' | 'profile' | 'map' | 'image';
 
 /** The look shared across a layout. Changing the theme recolours everything not set by hand. */
 export interface Theme {
   name: string;
+  /** The heading it appears under in the picker. */
+  group?: string;
   accent: string;
   accent2: string;
   text: string;
@@ -182,25 +186,6 @@ export interface Template {
 
 export const FONTS = ['Barlow Condensed', 'Arial', 'Segoe UI', 'Impact', 'Verdana', 'Georgia', 'Consolas'];
 
-export const THEMES: Theme[] = [
-  {
-    name: 'RideWorld', accent: '#ff9a3d', accent2: '#ff3d7f', text: '#ffffff', muted: '#c3cad6', panel: '#0e121e', panelOpacity: 0.72,
-    border: '#ffffff', track: '#ffffff', up: '#ff6b5e', down: '#4fd67a', font: 'Barlow Condensed', italic: true, bold: true, cornerRadius: 16, shadow: 4,
-  },
-  {
-    name: 'Clean white', accent: '#ffffff', accent2: '#d7dde6', text: '#ffffff', muted: '#e6e9ee', panel: '#000000', panelOpacity: 0,
-    border: '#ffffff', track: '#ffffff', up: '#ffffff', down: '#ffffff', font: 'Segoe UI', italic: false, bold: true, cornerRadius: 0, shadow: 8,
-  },
-  {
-    name: 'Amber', accent: '#ffbe3d', accent2: '#5fad60', text: '#ffffff', muted: '#ffffff', panel: '#000000', panelOpacity: 0,
-    border: '#ffffff', track: '#ffffff', up: '#ff4d85', down: '#80ffd1', font: 'Arial', italic: false, bold: true, cornerRadius: 0, shadow: 5,
-  },
-  {
-    name: 'Neon', accent: '#29f3e1', accent2: '#b84dff', text: '#f2fbff', muted: '#a9d9e8', panel: '#070b18', panelOpacity: 0.6,
-    border: '#29f3e1', track: '#29f3e1', up: '#ff4d9d', down: '#29f3a0', font: 'Barlow Condensed', italic: false, bold: true, cornerRadius: 6, shadow: 10,
-  },
-];
-
 const BASE_STYLE: Style = {
   opacity: 1,
   color: '', color2: '', textColor: '', mutedColor: '', trackColor: '', trackOpacity: 0.16, tickColor: '', needleColor: '',
@@ -221,6 +206,14 @@ const BASE_STYLE: Style = {
   mapOpacity: 1, mapDarken: 0, mapSaturation: 1, mapBrightness: 1, mapContrast: 1,
 };
 
+const lightPanel = (theme: Theme) => theme.panelOpacity > 0.5 && parseInt(theme.panel.slice(1, 3), 16) > 180;
+
+/** Zone colours are bright for dark panels, so on a pale one they need deepening to stay readable. */
+function darker(hex: string): string {
+  const channel = (i: number) => Math.round(parseInt(hex.slice(i, i + 2), 16) * 0.62).toString(16).padStart(2, '0');
+  return `#${channel(1)}${channel(3)}${channel(5)}`;
+}
+
 /** A widget's full style, with blanks filled from its theme and its data's defaults. */
 export function resolveStyle(widget: Widget, theme: Theme, rider: Rider = DEFAULT_RIDER): Style {
   const def = channelDef(widget.channel);
@@ -234,7 +227,7 @@ export function resolveStyle(widget: Widget, theme: Theme, rider: Rider = DEFAUL
     useZones: zones != null,
     ...widget.style,
   };
-  if (!widget.style.zones?.length) s.zones = zones ?? [];
+  if (!widget.style.zones?.length) s.zones = (zones ?? []).map(z => (lightPanel(theme) ? { ...z, color: darker(z.color) } : z));
   s.color ||= theme.accent;
   s.color2 ||= theme.accent2;
   s.textColor ||= theme.text;

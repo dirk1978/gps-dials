@@ -256,6 +256,12 @@ body.mode-design #editor-layer { display: block; cursor: default; touch-action: 
 .preset-thumb span.round { border-radius: 50%; }
 .preset-thumb span.map { background: #2e97df; }
 
+.theme-gallery { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; max-height: 300px; overflow-y: auto; margin: 6px 0 10px; }
+.theme-gallery h4 { grid-column: 1 / -1; margin: 6px 0 0; font-size: 11px; font-weight: 600; color: var(--muted); }
+.theme-tile { display: flex; flex-direction: column; gap: 4px; padding: 5px; font-size: 11px; white-space: normal; text-align: left; }
+.theme-tile.on { outline: 2px solid var(--accent); }
+.theme-sample { display: block; padding: 4px 8px; font-size: 20px; font-weight: 700; line-height: 1.2; }
+
 .menu { position: relative; }
 .menu summary {
   padding: 7px 13px;
