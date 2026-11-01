@@ -6,11 +6,22 @@
   "license": "MIT",
   "repository": "github:dirk1978/gps-dials",
   "type": "module",
+  "main": "dist/main.cjs",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
+    "app": "node scripts/build.mjs && electron .",
+    "build": "node scripts/build.mjs",
     "sync": "node src/sync/cli.ts",
     "test": "node --test \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "leaflet": "^1.9.4"
+  },
+  "devDependencies": {
+    "@types/leaflet": "^1.9.22",
+    "electron": "^45.2.1",
+    "esbuild": "^0.28.2"
   }
 }

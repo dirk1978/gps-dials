@@ -40,10 +40,12 @@ function horizontalShift(prev: Uint8Array, cur: Uint8Array): number {
  * Rate of turn measured from the picture alone, in radians per second at `hz`,
  * positive clockwise. The scale is approximate but correlation ignores scale.
  */
-export async function imageYawRate(clip: string, hz: number): Promise<Float64Array> {
+export async function imageYawRate(clip: string, hz: number, upsideDown = false): Promise<Float64Array> {
+  // An inverted picture would swap left and right, and put the handlebars in the analysed band.
+  const turn = upsideDown ? 'hflip,vflip,' : '';
   const ffmpeg = spawn('ffmpeg', [
     '-v', 'error', '-hwaccel', 'auto', '-i', clip, '-map', '0:v:0',
-    '-vf', `fps=${FPS},scale=${WIDTH}:${HEIGHT},format=gray`, '-f', 'rawvideo', '-',
+    '-vf', `${turn}fps=${FPS},scale=${WIDTH}:${HEIGHT},format=gray`, '-f', 'rawvideo', '-',
   ], { stdio: ['ignore', 'pipe', 'inherit'] });
 
   const frameSize = WIDTH * HEIGHT;

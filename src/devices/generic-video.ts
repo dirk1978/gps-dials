@@ -10,7 +10,7 @@ export const genericVideo: DeviceAdapter = {
     return true;
   },
 
-  async readMotion(clip, hz) {
-    return { turnRate: await imageYawRate(clip, hz), source: 'picture motion' };
+  async readMotion(clip, hz, upsideDown) {
+    return { turnRate: await imageYawRate(clip, hz, upsideDown), source: 'picture motion' };
   },
 };

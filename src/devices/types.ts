@@ -33,5 +33,6 @@ export interface DeviceAdapter {
   name: string;
   /** Must be quick and must not throw for files from other devices. */
   canRead(clip: string): boolean;
-  readMotion(clip: string, hz: number): Promise<ClipMotion>;
+  /** `upsideDown` is set when the picture is inverted and the file doesn't say so. */
+  readMotion(clip: string, hz: number, upsideDown?: boolean): Promise<ClipMotion>;
 }

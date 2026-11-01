@@ -40,7 +40,21 @@ function readSint32(view: DataView, pos: number, le: boolean): number | undefine
   return v === 0x7fffffff ? undefined : v;
 }
 
+const FILE_ID_MESSAGE = 0;
+const MANUFACTURERS: Record<number, string> = { 1: 'Garmin', 32: 'Wahoo', 255: 'Development device', 260: 'Zwift', 265: 'Coros', 289: 'Hammerhead' };
+
+export interface FitActivity {
+  points: TrackPoint[];
+  /** Maker's name, when the file names one we know. */
+  device?: string;
+}
+
 export function parseFit(bytes: Uint8Array): TrackPoint[] {
+  return parseFitActivity(bytes).points;
+}
+
+export function parseFitActivity(bytes: Uint8Array): FitActivity {
+  let device: string | undefined;
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const headerSize = bytes[0];
   if (String.fromCharCode(...bytes.subarray(8, 12)) !== '.FIT') throw new Error('Not a FIT file');
@@ -99,6 +113,8 @@ export function parseFit(bytes: Uint8Array): TrackPoint[] {
       } else if (def.global === RECORD_MESSAGE) {
         const signed = f.baseType === BASE_SINT32 && f.size === 4;
         values.set(f.no, signed ? readSint32(view, p, le) : readUnsigned(bytes, view, p, f.size, le));
+      } else if (def.global === FILE_ID_MESSAGE && f.no === 1 && f.size === 2) {
+        device = MANUFACTURERS[view.getUint16(p, le)];
       }
       p += f.size;
     }
@@ -119,7 +135,7 @@ export function parseFit(bytes: Uint8Array): TrackPoint[] {
       altitude: altitude != null ? altitude / 5 - 500 : undefined,
     });
   }
-  return points;
+  return { points, device };
 }
 
 export function readFit(path: string): TrackPoint[] {

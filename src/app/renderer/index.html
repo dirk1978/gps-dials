@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; media-src gpsdials-media:; style-src 'self' 'unsafe-inline'; connect-src 'none'">
+  <title>gps-dials</title>
+  <link rel="stylesheet" href="renderer.css">
+</head>
+<body>
+  <header>
+    <strong class="brand">gps-dials</strong>
+    <button id="open-folder" class="primary">Open folder</button>
+    <button id="open-clip">Open video</button>
+    <span id="clip-name" class="file">No video</span>
+    <button id="open-track">Open track</button>
+    <span id="track-name" class="file">No FIT or SRT</span>
+    <select id="track-select" aria-label="Track" hidden></select>
+    <span class="grow"></span>
+    <span id="status" role="status"></span>
+  </header>
+
+  <main>
+    <aside id="clip-panel" hidden>
+      <h2 id="clip-count">Clips</h2>
+      <ul id="clip-list"></ul>
+    </aside>
+
+    <section class="pane">
+      <div class="stage" id="video-stage">
+        <video id="video" preload="auto"></video>
+        <div id="video-empty" class="empty">Drop a video and a FIT file here</div>
+      </div>
+      <div class="controls">
+        <input id="video-scrub" class="scrub" type="range" min="0" max="1" step="0.01" value="0" aria-label="Video position" disabled>
+        <span id="video-time" class="time">0:00.0 / 0:00</span>
+      </div>
+      <div class="buttons">
+        <button data-frames="-1" title="Back one frame (,)">&#9664; Frame</button>
+        <button id="play" title="Play or pause (Space)">Play</button>
+        <button data-frames="1" title="Forward one frame (.)">Frame &#9654;</button>
+        <button id="rotate" title="Turn the picture 90 degrees">Rotate</button>
+        <label class="check"><input id="auto-rotate" type="checkbox" checked> Auto-correct upside-down</label>
+        <span id="rotate-note" class="note"></span>
+      </div>
+    </section>
+
+    <section class="pane">
+      <div class="stage">
+        <div id="map"></div>
+        <div id="map-note" class="map-note" hidden></div>
+      </div>
+      <div class="controls">
+        <input id="track-scrub" class="scrub" type="range" min="0" max="1" step="0.1" value="0" aria-label="Track position" disabled>
+        <span id="track-time" class="time">0:00 / 0:00</span>
+      </div>
+      <div class="buttons">
+        <button data-track-step="-1" title="Back one second on the track">&#9664; 1 s</button>
+        <span class="readout"><b id="read-speed">-</b> mph</span>
+        <span class="readout"><b id="read-hr">-</b> bpm</span>
+        <span class="readout"><b id="read-alt">-</b> m</span>
+        <button data-track-step="1" title="Forward one second on the track">1 s &#9654;</button>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="sync-state">
+      <span id="sync-badge" class="badge">Not synced</span>
+      <span id="sync-detail">Open a video and a track to begin.</span>
+    </div>
+    <span class="grow"></span>
+    <span id="nudge" hidden>
+      <button data-nudge="-1">-1 s</button>
+      <button data-nudge="-0.1">-0.1 s</button>
+      <button data-nudge="0.1">+0.1 s</button>
+      <button data-nudge="1">+1 s</button>
+    </span>
+    <button id="auto-sync" disabled>Auto-sync</button>
+    <button id="lock" class="primary" disabled>Match these two points</button>
+    <button id="save" disabled>Save</button>
+  </footer>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
