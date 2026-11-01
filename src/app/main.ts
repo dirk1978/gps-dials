@@ -228,6 +228,14 @@ function registerIpc(): void {
   }));
   ipcMain.handle('cancel-sync', () => stopSync?.());
 
+  // A clip with nothing to read simply goes without, so this never rejects.
+  ipcMain.handle('read-sensors', (_event, clip: string) => new Promise(resolve => {
+    const worker = utilityProcess.fork(join(__dirname, 'sync-worker.cjs'), [], { serviceName: 'gps-dials sensors' });
+    worker.on('message', message => resolve(message.ok ? message.result : null));
+    worker.once('exit', () => resolve(null));
+    worker.postMessage({ sensors: clip });
+  }));
+
   ipcMain.handle('project-pick-save', async (_event, name: string) => {
     const { canceled, filePath } = await dialog.showSaveDialog(window, {
       defaultPath: `${name}.${PROJECT_EXTENSION}`,

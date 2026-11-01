@@ -62,6 +62,11 @@ export function detectConvention(samples: MotionSample[]): OrientationConvention
   return best!;
 }
 
+/** Which way is up, as seen from the camera at this moment. */
+export function upInCamera(sample: MotionSample, convention: OrientationConvention): Vec3 {
+  return rotate(qconj(convention.map(sample.q)), convention.up);
+}
+
 /**
  * Rate of turn about the vertical, in radians per second, resampled to `hz`.
  * Positive is clockwise seen from above, to match compass course: the accelerometer

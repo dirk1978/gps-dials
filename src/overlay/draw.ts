@@ -1,3 +1,4 @@
+import type { ClipSensors } from '../devices/types.ts';
 import { channelDef, formatValue, readChannel, unitDef } from './channels.ts';
 import type { OverlayData } from './data.ts';
 import { displayDef } from './displays/index.ts';
@@ -17,17 +18,19 @@ export interface FrameContext {
   clipEnd: number;
   tiles?: TileSource;
   mapToken?: string;
+  /** What the camera recorded about this clip, if anything. */
+  sensors?: ClipSensors | null;
 }
 
 function drawWidget(ctx: Ctx, widget: Widget, frame: FrameContext, time: number): void {
-  const { width, height, template, data, clipStart, clipEnd } = frame;
+  const { width, height, template, data, clipStart, clipEnd, sensors } = frame;
   const unit = width / 1920;
   const style = resolveStyle(widget, template.theme, template.rider);
   const channel = channelDef(widget.channel);
   const display = displayDef(widget.display);
-  if (style.hideWhenNoData && !display.usesTrack && !data.available.has(widget.channel)) return;
+  if (style.hideWhenNoData && !display.usesTrack && !data.available.has(widget.channel) && !sensors?.series[widget.channel]) return;
   const unitInfo = unitDef(channel, style.unit);
-  const clip = { clipStart, rider: template.rider };
+  const clip = { clipStart, rider: template.rider, sensors };
   const value = readChannel(data, channel, style.unit, time, clip, style.smoothing);
 
   const env: DrawEnv = {
@@ -50,6 +53,7 @@ function drawWidget(ctx: Ctx, widget: Widget, frame: FrameContext, time: number)
     tiles: frame.tiles,
     mapToken: frame.mapToken ?? '',
     valueAt: t => readChannel(data, channel, style.unit, t, clip, style.smoothing),
+    read: id => readChannel(data, channelDef(id), undefined, time, clip),
   };
 
   ctx.save();

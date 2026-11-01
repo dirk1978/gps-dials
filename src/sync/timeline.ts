@@ -9,6 +9,8 @@ export interface TrackColumns {
   cadence?: (number | null)[];
   power?: (number | null)[];
   temperature?: (number | null)[];
+  /** When each lap the device recorded began. */
+  lapStarts?: number[];
 }
 
 /** Index of the last point at or before `time`, clamped to the track. */

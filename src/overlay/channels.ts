@@ -1,4 +1,5 @@
-import { seriesValue, type OverlayData } from './data.ts';
+import type { ClipSensors } from '../devices/types.ts';
+import { sensorValue, seriesValue, type OverlayData } from './data.ts';
 import { DEFAULT_RIDER, defaultZones, type Rider } from './zones.ts';
 
 export type ChannelId =
@@ -6,9 +7,11 @@ export type ChannelId =
   | 'altitude' | 'height' | 'gradient' | 'ascent' | 'verticalSpeed' | 'heading'
   | 'distance' | 'remaining' | 'homeDistance' | 'rideTime' | 'clipTime' | 'timeOfDay'
   | 'progress' | 'averageSpeed' | 'maxSpeed' | 'accelForward' | 'accelLateral' | 'gForce' | 'leanAngle'
-  | 'heartZone' | 'powerZone' | 'latitude' | 'longitude' | 'date';
+  | 'heartZone' | 'powerZone' | 'latitude' | 'longitude' | 'date'
+  | 'lapNumber' | 'lapTime' | 'lastLap' | 'bestLap' | 'splitKm' | 'splitMile' | 'launchTime'
+  | 'pitch' | 'iso' | 'shutter' | 'aperture' | 'whiteBalance';
 
-export type ChannelFormat = 'number' | 'duration' | 'clock' | 'compass' | 'date';
+export type ChannelFormat = 'number' | 'duration' | 'clock' | 'compass' | 'date' | 'shutter' | 'aperture';
 
 export interface UnitDef {
   id: string;
@@ -64,12 +67,27 @@ export const CHANNELS: ChannelDef[] = [
   { id: 'accelForward', label: 'Acceleration', units: FORCE_UNITS, min: -0.6, max: 0.6, step: 0.2, decimals: 2, format: 'number' },
   { id: 'accelLateral', label: 'Cornering force', units: FORCE_UNITS, min: -0.6, max: 0.6, step: 0.2, decimals: 2, format: 'number' },
   { id: 'gForce', label: 'G-force', units: FORCE_UNITS, min: 0, max: 1, step: 0.2, decimals: 2, format: 'number' },
-  { id: 'leanAngle', label: 'Lean angle (from GPS)', units: plain('°'), min: -45, max: 45, step: 15, decimals: 0, format: 'number' },
+  { id: 'leanAngle', label: 'Lean angle', units: plain('°'), min: -45, max: 45, step: 15, decimals: 0, format: 'number' },
   { id: 'heartZone', label: 'Heart rate zone', units: plain(''), min: 1, max: 5, step: 1, decimals: 0, format: 'number' },
   { id: 'powerZone', label: 'Power zone', units: plain(''), min: 1, max: 6, step: 1, decimals: 0, format: 'number' },
   { id: 'latitude', label: 'Latitude', units: plain('°'), min: -90, max: 90, step: 30, decimals: 5, format: 'number' },
   { id: 'longitude', label: 'Longitude', units: plain('°'), min: -180, max: 180, step: 60, decimals: 5, format: 'number' },
+  { id: 'lapNumber', label: 'Lap', units: plain(''), min: 0, max: 20, step: 5, decimals: 0, format: 'number' },
+  { id: 'lapTime', label: 'Lap time', units: plain(''), min: 0, max: 3600, step: 600, decimals: 0, format: 'duration' },
+  { id: 'lastLap', label: 'Last lap', units: plain(''), min: 0, max: 3600, step: 600, decimals: 0, format: 'duration' },
+  { id: 'bestLap', label: 'Best lap', units: plain(''), min: 0, max: 3600, step: 600, decimals: 0, format: 'duration' },
+  { id: 'splitKm', label: 'Last kilometre', units: plain(''), min: 0, max: 600, step: 60, decimals: 0, format: 'duration' },
+  { id: 'splitMile', label: 'Last mile', units: plain(''), min: 0, max: 900, step: 60, decimals: 0, format: 'duration' },
+  { id: 'launchTime', label: 'Standing start', units: plain('s'), min: 0, max: 30, step: 5, decimals: 1, format: 'number' },
+  { id: 'pitch', label: 'Pitch', units: plain('°'), min: -30, max: 30, step: 10, decimals: 0, format: 'number' },
+  { id: 'iso', label: 'ISO', units: plain(''), min: 100, max: 6400, step: 1000, decimals: 0, format: 'number' },
+  { id: 'shutter', label: 'Shutter speed', units: plain(''), min: 0, max: 0.04, step: 0.01, decimals: 0, format: 'shutter' },
+  { id: 'aperture', label: 'Aperture', units: plain(''), min: 1, max: 16, step: 3, decimals: 1, format: 'aperture' },
+  { id: 'whiteBalance', label: 'White balance', units: plain('K'), min: 2000, max: 10000, step: 2000, decimals: 0, format: 'number' },
 ];
+
+/** The camera's own readings, offered whatever the activity. */
+export const CAMERA_CHANNELS: ChannelId[] = ['iso', 'shutter', 'aperture', 'whiteBalance', 'pitch'];
 
 export const channelDef = (id: ChannelId): ChannelDef => CHANNELS.find(c => c.id === id) ?? CHANNELS[0];
 
@@ -81,6 +99,8 @@ export interface TimeContext {
   clipStart: number;
   /** Whose zones to use. */
   rider?: Rider;
+  /** What the camera recorded, which beats any estimate from the track. */
+  sensors?: ClipSensors | null;
 }
 
 /** The numbered zone a reading falls in, counting from 1. */
@@ -98,7 +118,9 @@ export function readChannel(data: OverlayData, def: ChannelDef, unitId: string |
   if (def.id === 'timeOfDay' || def.id === 'date') return time;
   if (def.id === 'heartZone') return zoneNumber('heartRate', seriesValue(data, 'heartRate', time, smoothing), clip.rider ?? DEFAULT_RIDER);
   if (def.id === 'powerZone') return zoneNumber('power', seriesValue(data, 'power', time, smoothing), clip.rider ?? DEFAULT_RIDER);
-  const value = seriesValue(data, def.id, time, smoothing);
+  const value = clip.sensors?.series[def.id]
+    ? sensorValue(clip.sensors, def.id, time - clip.clipStart, smoothing)
+    : seriesValue(data, def.id, time, smoothing);
   return value == null ? null : unitDef(def, unitId).convert(value);
 }
 
@@ -124,6 +146,8 @@ export function formatValue(def: ChannelDef, value: number | null, decimals: num
     const d = new Date(value * 1000);
     return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
   }
+  if (def.format === 'shutter') return value <= 0 ? '--' : value >= 0.5 ? `${value.toFixed(1)}s` : `1/${Math.round(1 / value)}`;
+  if (def.format === 'aperture') return `f/${value.toFixed(1)}`;
   if (def.format === 'compass') return COMPASS[Math.round(value / 45) % 8];
   const text = value.toFixed(decimals);
   return showSign && value > 0 ? `+${text}` : text;

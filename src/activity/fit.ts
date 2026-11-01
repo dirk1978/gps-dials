@@ -46,6 +46,8 @@ const MANUFACTURERS: Record<number, string> = { 1: 'Garmin', 32: 'Wahoo', 255: '
 
 const SESSION_MESSAGE = 18;
 const SESSION_SPORT_FIELD = 5;
+const LAP_MESSAGE = 19;
+const LAP_START_FIELD = 2;
 
 export interface FitActivity {
   points: TrackPoint[];
@@ -69,6 +71,7 @@ export function parseFitActivity(bytes: Uint8Array): FitActivity {
 
   const defs = new Map<number, MessageDef>();
   const points: TrackPoint[] = [];
+  const lapStarts: number[] = [];
   let lastTimestamp = 0;
   let pos = headerSize;
 
@@ -125,6 +128,9 @@ export function parseFitActivity(bytes: Uint8Array): FitActivity {
         device = MANUFACTURERS[view.getUint16(p, le)];
       } else if (def.global === SESSION_MESSAGE && f.no === SESSION_SPORT_FIELD) {
         sport = bytes[p];
+      } else if (def.global === LAP_MESSAGE && f.no === LAP_START_FIELD && f.size === 4) {
+        const start = readUnsigned(bytes, view, p, 4, le);
+        if (start != null) lapStarts.push(start + FIT_EPOCH_UNIX);
       }
       p += f.size;
     }
@@ -147,6 +153,10 @@ export function parseFitActivity(bytes: Uint8Array): FitActivity {
       power: values.get(7),
       temperature: values.get(13),
     });
+  }
+  for (const start of lapStarts) {
+    const first = points.find(point => point.t >= start);
+    if (first) first.lapStart = true;
   }
   return { points, device, sport };
 }

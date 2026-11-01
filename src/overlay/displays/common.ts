@@ -40,6 +40,8 @@ export interface DrawEnv {
   mapToken: string;
   /** A channel's value at another time, in the widget's unit, for graphs. */
   valueAt(time: number): number | null;
+  /** Another channel's value right now, in its first unit, wherever it was recorded. */
+  read(channel: ChannelId): number | null;
 }
 
 export interface DisplayDef {

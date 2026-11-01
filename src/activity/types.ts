@@ -16,6 +16,8 @@ export interface TrackPoint {
   power?: number;
   /** Degrees Celsius. */
   temperature?: number;
+  /** Set on the first point of each lap the device recorded. */
+  lapStart?: boolean;
 }
 
 /**

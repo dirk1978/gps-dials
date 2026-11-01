@@ -1,4 +1,4 @@
-import { CHANNELS, type ChannelId } from '../overlay/channels.ts';
+import { CAMERA_CHANNELS, CHANNELS, type ChannelId } from '../overlay/channels.ts';
 import type { Template } from '../overlay/template.ts';
 import { boating } from './boating.ts';
 import { cycling } from './cycling.ts';
@@ -35,6 +35,7 @@ export function channelGroups(id: string): ChannelGroup[] {
     return { name, channels: fresh };
   };
   const groups = [current, ...ACTIVITIES.filter(a => a !== current)].map(a => take(a.name, a.channels));
+  groups.push(take('Camera', CAMERA_CHANNELS));
   groups.push(take('Other', CHANNELS.map(c => c.id)));
   return groups.filter(g => g.channels.length > 0);
 }

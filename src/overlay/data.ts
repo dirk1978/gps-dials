@@ -1,3 +1,4 @@
+import type { ClipSensors } from '../devices/types.ts';
 import { indexAtTime, type TrackColumns } from '../sync/timeline.ts';
 import { CHANNELS, GRAVITY, type ChannelId } from './channels.ts';
 
@@ -19,6 +20,12 @@ const TURN_SPAN_S = 3;
 const MIN_TURNING_SPEED = 2;
 const MOVING_SPEED = 0.5;
 const MAX_SPEED_POINTS = 3;
+const STOPPED_SPEED = 0.5;
+const MAX_LAUNCH_S = 60;
+const METRES_PER_KM = 1000;
+const METRES_PER_MILE = 1609.344;
+/** 20 mph, which a bike reaches from a standing start. */
+export const DEFAULT_LAUNCH_SPEED = 8.9408;
 
 export interface OverlayData {
   track: TrackColumns;
@@ -29,6 +36,8 @@ export interface OverlayData {
   /** Channels with at least one real value in this track. */
   available: Set<ChannelId>;
   gradientSpan: number;
+  /** The speed a standing-start timer runs to, in m/s. */
+  launchSpeed: number;
 }
 
 function metresBetween(track: TrackColumns, i: number, j: number): number {
@@ -165,6 +174,78 @@ function maxSpeedSeries(speed: (number | null)[]): (number | null)[] {
   });
 }
 
+/** The lap at each point, and how long it has been running, plus the last and best finished laps. */
+function lapSeries(t: number[], starts: number[]): Pick<OverlayData['series'], 'lapNumber' | 'lapTime' | 'lastLap' | 'bestLap'> {
+  const none = t.map(() => null);
+  if (starts.length < 2) return { lapNumber: none, lapTime: none, lastLap: none, bestLap: none };
+  const sorted = [...starts].sort((a, b) => a - b);
+  let lap = -1;
+  let best: number | null = null;
+  let last: number | null = null;
+  const number: (number | null)[] = [];
+  const running: (number | null)[] = [];
+  const lastLap: (number | null)[] = [];
+  const bestLap: (number | null)[] = [];
+  for (const time of t) {
+    while (lap + 1 < sorted.length && sorted[lap + 1] <= time) {
+      lap++;
+      if (lap > 0) {
+        last = sorted[lap] - sorted[lap - 1];
+        best = best == null ? last : Math.min(best, last);
+      }
+    }
+    number.push(lap < 0 ? null : lap + 1);
+    running.push(lap < 0 ? null : time - sorted[lap]);
+    lastLap.push(last);
+    bestLap.push(best);
+  }
+  return { lapNumber: number, lapTime: running, lastLap, bestLap };
+}
+
+/** How long the last whole stretch of `length` metres took, like a kilometre split. */
+function splitSeries(t: number[], distance: number[], length: number): (number | null)[] {
+  let reachedAt = t[0];
+  let next = length;
+  let last: number | null = null;
+  return t.map((time, i) => {
+    while (distance[i] >= next) {
+      // Between points, so the split doesn't depend on how often the device records.
+      const before = distance[i - 1];
+      const f = distance[i] > before ? (next - before) / (distance[i] - before) : 1;
+      const at = t[i - 1] + (time - t[i - 1]) * f;
+      last = at - reachedAt;
+      reachedAt = at;
+      next += length;
+    }
+    return last;
+  });
+}
+
+/** A timer from each standing start: runs until the target speed, then holds its result. */
+function launchSeries(t: number[], speed: (number | null)[], target: number): (number | null)[] {
+  let startedAt: number | null = null;
+  let shown: number | null = null;
+  return t.map((time, i) => {
+    const v = speed[i] ?? 0;
+    if (v < STOPPED_SPEED) {
+      startedAt = time;
+      return shown;
+    }
+    if (startedAt == null) return shown;
+    const taken = time - startedAt;
+    if (v >= target) {
+      startedAt = null;
+      shown = taken;
+    } else if (taken <= MAX_LAUNCH_S) {
+      return taken;
+    } else {
+      // A slow roll away from a junction isn't a start worth timing.
+      startedAt = null;
+    }
+    return shown;
+  });
+}
+
 /** For recordings without a speed sensor, such as a drone's subtitle track. */
 function speedFromPositions(track: TrackColumns, distance: number[]): (number | null)[] {
   const n = track.t.length;
@@ -179,7 +260,7 @@ function speedFromPositions(track: TrackColumns, distance: number[]): (number | 
   return out;
 }
 
-export function prepareOverlayData(track: TrackColumns, gradientSpan = DEFAULT_GRADIENT_SPAN_M): OverlayData {
+export function prepareOverlayData(track: TrackColumns, gradientSpan = DEFAULT_GRADIENT_SPAN_M, launchSpeed = DEFAULT_LAUNCH_SPEED): OverlayData {
   const n = track.t.length;
   const distance = new Array<number>(n).fill(0);
   for (let i = 1; i < n; i++) distance[i] = distance[i - 1] + metresBetween(track, i - 1, i);
@@ -216,6 +297,10 @@ export function prepareOverlayData(track: TrackColumns, gradientSpan = DEFAULT_G
     leanAngle: lateral.map(a => (a == null ? null : (Math.atan(a / GRAVITY) * 180) / Math.PI)),
     latitude: track.lat,
     longitude: track.lon,
+    ...lapSeries(track.t, track.lapStarts ?? []),
+    splitKm: splitSeries(track.t, distance, METRES_PER_KM),
+    splitMile: splitSeries(track.t, distance, METRES_PER_MILE),
+    launchTime: launchSeries(track.t, speed, launchSpeed),
   };
 
   const available = new Set<ChannelId>(CHANNELS.filter(c => c.clock).map(c => c.id));
@@ -225,7 +310,7 @@ export function prepareOverlayData(track: TrackColumns, gradientSpan = DEFAULT_G
   }
   if (available.has('heartRate')) available.add('heartZone');
   if (available.has('power')) available.add('powerZone');
-  return { track, distance, series, available, gradientSpan };
+  return { track, distance, series, available, gradientSpan, launchSpeed };
 }
 
 /** When the track reached `metres` along itself. */
@@ -260,9 +345,18 @@ function meanHeading(values: (number | null)[], from: number, to: number): numbe
 /** A base-unit value at `time`, averaged over `smoothing` seconds when asked. */
 export function seriesValue(data: OverlayData, channel: ChannelId, time: number, smoothing = 0): number | null {
   const values = data.series[channel];
-  if (!values) return null;
-  const { t } = data.track;
+  return values ? valueAmong(data.track.t, values, channel, time, smoothing) : null;
+}
 
+/** A reading from the camera, which is on the clip's clock. Null past either end of the clip. */
+export function sensorValue(sensors: ClipSensors, channel: ChannelId, clipTime: number, smoothing = 0): number | null {
+  const values = sensors.series[channel];
+  const { t } = sensors;
+  if (!values || t.length === 0 || clipTime < 0 || clipTime > t[t.length - 1]) return null;
+  return valueAmong(t, values, channel, clipTime, smoothing);
+}
+
+function valueAmong(t: number[], values: (number | null)[], channel: ChannelId, time: number, smoothing: number): number | null {
   if (smoothing > 0) {
     const from = indexAtTime(t, time - smoothing / 2);
     const to = indexAtTime(t, time + smoothing / 2);

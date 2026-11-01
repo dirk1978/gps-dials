@@ -5,7 +5,7 @@ export const cycling: ActivityDef = {
   id: 'cycling',
   name: 'Cycling',
   fitSports: [2, 21],
-  channels: ['speed', 'averageSpeed', 'maxSpeed', 'heartRate', 'heartZone', 'cadence', 'power', 'powerZone', 'gradient', 'leanAngle', 'gForce', 'accelForward', 'accelLateral', 'altitude', 'ascent', 'temperature', 'distance', 'remaining', 'progress', 'rideTime', 'clipTime', 'timeOfDay', 'date'],
+  channels: ['speed', 'averageSpeed', 'maxSpeed', 'heartRate', 'heartZone', 'cadence', 'power', 'powerZone', 'gradient', 'leanAngle', 'gForce', 'accelForward', 'accelLateral', 'altitude', 'ascent', 'temperature', 'distance', 'remaining', 'progress', 'rideTime', 'lapNumber', 'lapTime', 'lastLap', 'bestLap', 'splitKm', 'splitMile', 'launchTime', 'clipTime', 'timeOfDay', 'date'],
   layout: layout('Cycling', [
     ['distance', 'map', LEFT, 0.025, MAP_W, MAP_H, FOLLOW],
     ['gradient', 'counter', 0.27, 0.025, 0.115, COUNTER_H, SIGNED],

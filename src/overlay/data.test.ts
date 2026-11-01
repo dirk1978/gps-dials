@@ -131,6 +131,46 @@ test('numbers zones from the rider, only when the sensor is there', () => {
   assert.equal(data.available.has('powerZone'), false);
 });
 
+test('times laps from the device, and shows nothing for a single lap', () => {
+  const data = prepareOverlayData({ ...track, lapStarts: [1000, 1005, 1012] });
+  assert.equal(seriesValue(data, 'lapNumber', 1006), 2);
+  assert.equal(seriesValue(data, 'lapTime', 1007), 2);
+  assert.equal(seriesValue(data, 'lastLap', 1013), 7);
+  assert.equal(seriesValue(data, 'bestLap', 1013), 5);
+  assert.equal(prepareOverlayData({ ...track, lapStarts: [1000] }).available.has('lapNumber'), false);
+});
+
+test('times each whole kilometre', () => {
+  const t = Array.from({ length: 300 }, (_, i) => 1000 + i);
+  const long = { ...track, t, lat: t.map((_, i) => 50 + i * 0.0001), lon: new Array(300).fill(0), speed: new Array(300).fill(11), heartRate: new Array(300).fill(120), altitude: new Array(300).fill(100), power: new Array(300).fill(0) };
+  const data = prepareOverlayData(long);
+  assert.equal(seriesValue(data, 'splitKm', 1050), null);
+  assert.ok(Math.abs(seriesValue(data, 'splitKm', 1200)! - 89.9) < 1);
+});
+
+test('times a standing start to the target and holds the result', () => {
+  const speed = track.t.map((_, i) => (i < 3 ? 0 : (i - 2) * 2));
+  const data = prepareOverlayData({ ...track, speed }, undefined, 8);
+  assert.equal(seriesValue(data, 'launchTime', 1000), null);
+  assert.equal(seriesValue(data, 'launchTime', 1004), 2);
+  assert.equal(seriesValue(data, 'launchTime', 1006), 4);
+  assert.equal(seriesValue(data, 'launchTime', 1015), 4);
+});
+
+test('a camera reading beats the estimate, on the clip clock', () => {
+  const data = prepareOverlayData(circle());
+  const sensors = { t: [0, 1, 2, 3], series: { leanAngle: [5, 6, 7, 8] } };
+  const lean = channelDef('leanAngle');
+  assert.equal(readChannel(data, lean, undefined, 1061.5, { clipStart: 1060, sensors }), 6.5);
+  assert.equal(readChannel(data, lean, undefined, 1050, { clipStart: 1060, sensors }), null);
+  assert.ok(Math.abs(readChannel(data, lean, undefined, 1060, { clipStart: 1060 })! - 11.5) < 0.6);
+});
+
+test('formats camera settings', () => {
+  assert.equal(formatValue(channelDef('shutter'), 0.01, 0), '1/100');
+  assert.equal(formatValue(channelDef('aperture'), 2.8, 1), 'f/2.8');
+});
+
 test('smooths over the chosen window', () => {
   const data = prepareOverlayData(track);
   assert.equal(seriesValue(data, 'altitude', 1010, 4), 110);

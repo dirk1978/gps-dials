@@ -1,3 +1,5 @@
+import type { ChannelId } from '../overlay/channels.ts';
+
 export type Quaternion = [number, number, number, number];
 
 export interface MotionSample {
@@ -22,6 +24,14 @@ export interface ClipMotion {
   source: string;
 }
 
+/** What a camera recorded about itself, on the clip's own clock rather than the GPS track's. */
+export interface ClipSensors {
+  /** Seconds from the start of the clip. */
+  t: number[];
+  /** In each channel's base unit. A camera's reading replaces any estimate from GPS. */
+  series: Partial<Record<ChannelId, (number | null)[]>>;
+}
+
 /**
  * Teaches gps-dials to read one camera or drone. Add a file in this folder and list
  * it in `index.ts`; nothing else needs to change.
@@ -35,4 +45,6 @@ export interface DeviceAdapter {
   canRead(clip: string): boolean;
   /** `upsideDown` is set when the picture is inverted and the file doesn't say so. */
   readMotion(clip: string, hz: number, upsideDown?: boolean): Promise<ClipMotion>;
+  /** Optional: settings and sensors to offer as overlay data. Null if this clip has none. */
+  readSensors?(clip: string): ClipSensors | null;
 }

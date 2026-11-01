@@ -1,6 +1,6 @@
 import { channelGroups } from '../../activities/index.ts';
 import { channelDef, type ChannelId } from '../../overlay/channels.ts';
-import { DEFAULT_GRADIENT_SPAN_M } from '../../overlay/data.ts';
+import { DEFAULT_GRADIENT_SPAN_M, DEFAULT_LAUNCH_SPEED } from '../../overlay/data.ts';
 import { DISPLAYS, displayDef } from '../../overlay/displays/index.ts';
 import { fieldsFor, type Field } from '../../overlay/fields.ts';
 import { MAP_PROVIDERS } from '../../overlay/map-view.ts';
@@ -55,6 +55,8 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLEl
 }
 
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
+const ROUND_DISPLAYS: DisplayId[] = ['dial', 'arc', 'vsi', 'compass', 'horizon', 'scope'];
+const METRES_PER_SECOND_PER_MPH = 0.44704;
 
 export function createEditor(host: EditorHost) {
   const layer = document.getElementById('editor-layer')!;
@@ -683,10 +685,17 @@ export function createEditor(host: EditorHost) {
       t.gradientSpan = Number(v);
       host.redraw();
     }, commit);
+    const launch = control('range', Math.round((t.launchSpeed ?? DEFAULT_LAUNCH_SPEED) / METRES_PER_SECOND_PER_MPH), { min: 5, max: 100, step: 5 }, v => {
+      t.launchSpeed = Number(v) * METRES_PER_SECOND_PER_MPH;
+      host.redraw();
+    }, commit);
     inspector.replaceChildren(
       el('p', { className: 'hint', textContent: 'Select a widget on the picture to change it. The theme sets everything a widget hasn\'t changed itself.' }),
       section('Theme', rows),
-      section('Data', [row('Gradient over (m)', span, undefined, 'Shorter reacts faster but is noisier. Longer is steadier but flattens short ramps.')]),
+      section('Data', [
+        row('Gradient over (m)', span, undefined, 'Shorter reacts faster but is noisier. Longer is steadier but flattens short ramps.'),
+        row('Standing start to (mph)', launch, undefined, 'The Standing start timer runs from a stop up to this speed.'),
+      ]),
       section('You', [
         riderField('maxHeartRate', 'Max heart rate', 'Heart rate zones are percentages of this.'),
         riderField('ftp', 'FTP (watts)', 'Power zones are percentages of this.'),
@@ -716,7 +725,7 @@ export function createEditor(host: EditorHost) {
 
   document.getElementById('preset-grid')!.replaceChildren(...PRESETS.map(preset => {
     const thumb = el('span', { className: 'preset-thumb' }, ...preset.widgets.map(w => {
-      const round = w.display === 'dial' || w.display === 'arc' || w.style.mapShape === 'circle';
+      const round = ROUND_DISPLAYS.includes(w.display) || w.style.mapShape === 'circle';
       const box = el('span', { className: `${round ? 'round ' : ''}${w.display === 'map' ? 'map' : ''}`.trim() });
       Object.assign(box.style, { left: `${w.x * 100}%`, top: `${w.y * 100}%`, width: `${w.width * 100}%`, height: `${w.height * 100}%` });
       return box;

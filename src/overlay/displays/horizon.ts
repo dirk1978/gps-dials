@@ -1,4 +1,3 @@
-import { seriesValue } from '../data.ts';
 import { drawText, fraction, rgba, setFont, spacedLabel, type DisplayDef } from './common.ts';
 
 const ROLL_MARKS = [-60, -45, -30, 30, 45, 60];
@@ -13,15 +12,15 @@ export const horizon: DisplayDef = {
   label: 'Artificial horizon',
   prefers: 'leanAngle',
   draw(env) {
-    const { ctx, box, style, data, time, value, valueText, unitLabel, unit } = env;
+    const { ctx, box, style, value, valueText, unitLabel, unit } = env;
     const cx = box.x + box.w / 2;
     const cy = box.y + box.h / 2;
     const R = Math.min(box.w, box.h) / 2;
     const halfRange = (style.max - style.min) / 2;
     // Any data can drive it, spread across its scale. For a lean angle that is simply the angle.
     const roll = value == null ? 0 : (fraction(style, value) * 2 - 1) * halfRange;
-    const slope = seriesValue(data, 'gradient', time) ?? 0;
-    const pitch = (Math.atan(slope / 100) * 180) / Math.PI;
+    // A camera's own pitch beats the slope of the road beneath it.
+    const pitch = env.read('pitch') ?? (Math.atan((env.read('gradient') ?? 0) / 100) * 180) / Math.PI;
 
     ctx.save();
     ctx.beginPath();

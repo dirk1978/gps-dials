@@ -12,5 +12,6 @@ export function toColumns(points: TrackPoint[]): TrackColumns {
     cadence: points.map(p => p.cadence ?? null),
     power: points.map(p => p.power ?? null),
     temperature: points.map(p => p.temperature ?? null),
+    lapStarts: points.flatMap(p => (p.lapStart ? [p.t] : [])),
   };
 }

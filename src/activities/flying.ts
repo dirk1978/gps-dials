@@ -5,7 +5,7 @@ export const flying: ActivityDef = {
   id: 'flying',
   name: 'Flying',
   fitSports: [20, 26],
-  channels: ['altitude', 'height', 'speed', 'maxSpeed', 'verticalSpeed', 'heading', 'leanAngle', 'gForce', 'temperature', 'heartRate', 'distance', 'remaining', 'progress', 'latitude', 'longitude', 'rideTime', 'clipTime', 'timeOfDay', 'date'],
+  channels: ['altitude', 'height', 'speed', 'maxSpeed', 'verticalSpeed', 'heading', 'leanAngle', 'pitch', 'gForce', 'temperature', 'heartRate', 'distance', 'remaining', 'progress', 'latitude', 'longitude', 'rideTime', 'clipTime', 'timeOfDay', 'date'],
   layout: layout('Flying', [
     ['distance', 'map', LEFT, 0.025, MAP_W, MAP_H, { mapMode: 'follow', mapZoom: 12.5, mapRotate: true, markerStyle: 'arrow' }],
     ['altitude', 'dial', RIGHT_DIAL, 0.025, DIAL_W, DIAL_H, { unit: 'ft', max: 10000, step: 2000 }],

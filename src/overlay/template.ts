@@ -166,6 +166,8 @@ export interface Template {
   widgets: Widget[];
   /** Length of road gradient is measured over, in metres. Shorter reacts faster; longer ignores noise. */
   gradientSpan?: number;
+  /** The speed a standing-start timer runs to, in m/s. */
+  launchSpeed?: number;
   rider?: Rider;
   /** Still the built-in choice, so it can follow the activity until someone edits it. */
   auto?: boolean;
@@ -290,6 +292,7 @@ export function normaliseTemplate(raw: unknown): Template {
     name: String(t.name ?? 'Untitled'),
     theme: { ...THEMES[0], ...t.theme },
     gradientSpan: t.gradientSpan,
+    launchSpeed: t.launchSpeed,
     rider: t.rider,
     auto: t.auto,
     widgets: t.widgets.filter(w => w && typeof w === 'object').map(w => ({

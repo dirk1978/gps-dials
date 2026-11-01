@@ -7,6 +7,8 @@ import '@fontsource/barlow-condensed/latin-700-italic.css';
 import './styles.css';
 import { createCompareView, type CompareApi, type SourceItem } from './compare-view.ts';
 import { createEditor } from './editor.ts';
+import type { ClipSensors } from '../../devices/types.ts';
+import type { ChannelId } from '../../overlay/channels.ts';
 import type { ActivityKind } from '../../activity/types.ts';
 import { clipStartFromPin, indexAtTime, nearestIndex, positionAt, type TrackColumns } from '../../sync/timeline.ts';
 import type { SessionResult, SyncResult } from '../../sync/engine.ts';
@@ -69,6 +71,7 @@ declare global {
       autoSync(job: { clip: string; upsideDown?: boolean; trackPath: string }): Promise<SyncResult | null>;
       autoSync(job: { clips: string[]; trackPath: string }): Promise<SessionResult[] | null>;
       cancelSync(): Promise<void>;
+      readSensors(clip: string): Promise<ClipSensors | null>;
       pickProjectSave(name: string): Promise<string | null>;
       pickProjectOpen(): Promise<string | null>;
       writeProject(path: string, project: ProjectFile): Promise<void>;
@@ -163,6 +166,8 @@ let exporting = false;
 const exportProgress = new Map<string, BatchProgress>();
 let template: Template = layoutFor('cycling');
 let syncing = false;
+/** What the open clip's camera recorded about itself. */
+let clipSensors: ClipSensors | null = null;
 const SYNC_CANCELLED = 'Sync cancelled. Nothing was changed.';
 let mode: Mode = 'sync';
 
@@ -362,8 +367,8 @@ function followVideo(): void {
 function renderOverlayPreview(): void {
   const canvas = $<HTMLCanvasElement>('overlay');
   const ctx = canvas.getContext('2d')!;
-  if (track && overlayData && template.gradientSpan != null && overlayData.gradientSpan !== template.gradientSpan) {
-    overlayData = prepareOverlayData(track.columns, template.gradientSpan);
+  if (track && overlayData && ((template.gradientSpan != null && overlayData.gradientSpan !== template.gradientSpan) || (template.launchSpeed != null && overlayData.launchSpeed !== template.launchSpeed))) {
+    overlayData = prepareOverlayData(track.columns, template.gradientSpan, template.launchSpeed);
   }
   const start = clipStart ?? (mode === 'design' ? designStart() : null);
   const show = ($<HTMLInputElement>('show-dials').checked || mode === 'design') && start != null && clip && overlayData && video.videoWidth > 0;
@@ -393,6 +398,7 @@ function renderOverlayPreview(): void {
     clipEnd: start + clip.duration,
     tiles: previewTiles,
     mapToken,
+    sensors: clipSensors,
   }, start + video.currentTime);
 }
 
@@ -450,7 +456,7 @@ const editor = createEditor({
   },
   pictureRect,
   redraw: renderOverlayPreview,
-  channelsWithData: () => overlayData?.available ?? null,
+  channelsWithData: () => overlayData ? new Set([...overlayData.available, ...Object.keys(clipSensors?.series ?? {}) as ChannelId[]]) : null,
   status: setStatus,
   saveWorkingCopy: t => {
     void api.saveWorkingCopy(t);
@@ -1081,7 +1087,7 @@ async function loadTrack(path: string): Promise<void> {
   $<HTMLSelectElement>('track-select').value = path;
   sessionResults = sessions.get(path) ?? new Map();
   sessions.set(path, sessionResults);
-  overlayData = prepareOverlayData(columns, template.gradientSpan);
+  overlayData = prepareOverlayData(columns, template.gradientSpan, template.launchSpeed);
   clipStart = null;
   confident = false;
   const best = layoutFor(track.kind, overlayData.available);
@@ -1154,6 +1160,13 @@ async function loadClip(path: string): Promise<void> {
   $('preview-status').hidden = true;
   const keepPlaying = !video.paused;
   clip = loaded;
+  clipSensors = null;
+  void api.readSensors(loaded.path).then(sensors => {
+    if (clip?.path !== loaded.path) return;
+    clipSensors = sensors;
+    editor.refresh();
+    renderOverlayPreview();
+  });
   listClip(loaded);
   clipStart = null;
   confident = false;

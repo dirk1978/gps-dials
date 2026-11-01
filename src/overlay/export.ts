@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { basename, dirname, join } from 'node:path';
 import { once } from 'node:events';
 import { GlobalFonts, createCanvas, loadImage } from '@napi-rs/canvas';
+import { readClipSensors } from '../devices/index.ts';
 import type { TrackColumns } from '../sync/timeline.ts';
 import { prepareOverlayData, type OverlayData } from './data.ts';
 import { drawFrame, type Ctx } from './draw.ts';
@@ -126,7 +127,7 @@ export async function renderOverlay(
   const { width, height, fps, duration } = clipGeometry(job.clip, job.extraRotation);
   const hz = job.updateHz ?? DEFAULT_UPDATE_HZ;
   const frames = Math.ceil(duration * hz);
-  const data = prepareOverlayData(job.track, job.template.gradientSpan);
+  const data = prepareOverlayData(job.track, job.template.gradientSpan, job.template.launchSpeed);
   const mapToken = job.mapToken ?? '';
   const { images, missing } = await loadTiles(tilesForClip(job.template, width, height, job.clipStart, duration, data, mapToken));
   for (const widget of job.template.widgets) {
@@ -142,6 +143,7 @@ export async function renderOverlay(
     clipStart: job.clipStart,
     clipEnd: job.clipStart + duration,
     mapToken,
+    sensors: readClipSensors(job.clip),
     tiles: { image: (url: string) => (images.get(url) ?? null) as unknown as CanvasImageSource | null },
   };
 
