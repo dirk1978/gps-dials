@@ -2,6 +2,8 @@
 
 Free, open-source telemetry overlays for action camera footage: speed, heart rate, gradient, maps and more, lined up automatically with your GPS data.
 
+![Ride footage with a map, speed and heart rate dials, lean angle and an elevation profile overlaid](docs/screenshots/overlay.jpg)
+
 It is a community successor to Garmin VIRB Edit, which Garmin no longer develops. The app imports your clips and FIT or GPX files, syncs them, lets you lay out dials on a WYSIWYG canvas and exports an overlay for your video editor: true transparency (alpha) for editors that support it, or a chroma key background for those that don't.
 
 > **Status: early but working.** Sync, the layout editor, source comparison and overlay export all work. Expect rough edges, and tell us what you find.
@@ -25,6 +27,8 @@ The downloads aren't commercially code-signed yet, so your system will warn you.
 3. Check each clip beside the map and correct any that are off.
 4. Press Generate to get one overlay file per video, in an `overlays` folder beside your clips. Each one is named after its clip and fits it exactly, so it drops straight onto the track above it.
 
+![The Sync tab, with a list of synced clips, the video and its position on the map](docs/screenshots/sync.jpg)
+
 | Format | Best for | Size at 4K |
 |---|---|---|
 | Transparent (PNG in MOV) | PowerDirector | About 0.3 GB a minute |
@@ -37,11 +41,15 @@ Transparent overlays run at 10 frames a second, the rate the dials update, which
 
 The **Design** tab works straight on top of your footage. Any data can be shown any way:
 
+![The Design tab with the heart rate dial selected and its settings open](docs/screenshots/design.jpg)
+
 - **Data:** speed, average and top speed, pace, heart rate, cadence, power, zones, temperature, altitude, gradient, climbing, climb rate, heading, distance, progress, coordinates, time and date.
 - **Forces:** lean angle, pitch, G-force, acceleration, cornering force and corner speed.
 - **Timing:** laps from your device, kilometre and mile splits, and a standing start timer to a speed you choose.
 - **Camera:** ISO, shutter speed, aperture and white balance.
 - **Displays:** dial, zero-centre dial, arc, compass, sliding tape, tilt indicator, artificial horizon, G-force scope, bar, zone blocks, number, min, average and max, graph over time or distance, road profile, map, route and custom text. Your own images can be a logo, a dial and needle, or a picture that fills or grows with the value.
+
+![Every kind of display on one frame, including dials, a compass, an artificial horizon, zones, graphs, a route and a map](docs/screenshots/gauges.jpg)
 
 The data lists show what matters for your activity first.
 
@@ -51,15 +59,23 @@ Lean angle and G-force are worked out from GPS, which updates about once a secon
 
 Start from one of the built-in presets, or from nothing. Drag and resize on the picture, with snapping to the centre and to other widgets. Each widget has its own colours, thickness, size, opacity, fonts, scale, ticks, colour zones and more, and a theme sets everything you haven't changed yourself. More than 40 themes are built in, grouped by activity and feel. Layouts can be saved and shared as files.
 
+![The theme gallery beside an overlay in the Grand tour theme](docs/screenshots/theme.jpg)
+
+![The same frame in six themes: Race day, Trail, Synthwave, Vintage speedo, Glass cockpit and Paper](docs/screenshots/themes.jpg)
+
 ## Maps in your overlays
 
 The **Map** display shows your track on a real map, either following you, or fitted to the clip or the whole activity. Choose the zoom, whether it turns with your direction of travel, its shape, opacity, darkness, colour, brightness and contrast, and style the route and position marker however you like.
+
+![The map widget selected in the Design tab, with its settings open](docs/screenshots/map.jpg)
 
 OpenStreetMap works with no setup. Its credit stays on the map, because that's a condition of using it. The app fetches only the map images each clip needs and keeps them on your PC, as [its tile policy](https://operations.osmfoundation.org/policies/tiles/) asks. Mapbox styles, including satellite, use your own token from **Map settings**, which explains the free allowance and how to get one. Any other provider can be added by its tile address. Check your provider's terms before publishing its maps in video.
 
 ## Compare your sources
 
 Recorded the same ride on two devices? The **Compare sources** tab shows where they agree and differ on position, altitude, speed, heart rate and gradient, and can build a combined track from the best of each. An optional check against terrain data sends your route to [Open-Meteo](https://open-meteo.com/) only when you press its button. Terrain data comes from the Copernicus GLO-90 elevation model.
+
+![Compare sources, with findings about two devices and their altitude traces on one chart](docs/screenshots/compare.jpg)
 
 ## Projects
 
@@ -70,6 +86,8 @@ The **Project** menu keeps a piece of work together: your clips, GPS sources, sy
 Sync finds where a clip belongs in an activity by comparing the camera's turning with the turns in the GPS track, so it does not depend on the camera's clock being right. A camera's clock is wrong by about the same amount all day, so clips that match well also settle the short or straight clips that can't be matched alone.
 
 Clips can also be lined up by hand: find a frame you recognise, click that spot on the track and match them. The track still works if map images can't load.
+
+![Lining up a clip by hand, with the video and map moving separately and a button to match the two points](docs/screenshots/adjust.jpg)
 
 Previews and green screen exports use the GPU when they can. NVIDIA is tested; Intel, AMD and Apple are built in but not yet tested on real hardware, and anything else falls back to the CPU.
 
