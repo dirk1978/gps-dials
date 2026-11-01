@@ -1,0 +1,16 @@
+{
+  "name": "gps-dials",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Free, open-source telemetry overlays for action camera footage",
+  "license": "MIT",
+  "repository": "github:dirk1978/gps-dials",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "sync": "node src/sync/cli.ts",
+    "test": "node --test \"src/**/*.test.ts\""
+  }
+}
