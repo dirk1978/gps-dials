@@ -90,7 +90,7 @@ export const FIELDS: Field[] = [
   { section: 'Shape', key: 'groundColor', label: 'Ground colour', kind: 'color', only: ['horizon'] },
   { section: 'Shape', key: 'scopeRange', label: 'G-force at the rim', kind: 'range', min: 0.2, max: 3, step: 0.1, only: ['scope'] },
   { section: 'Shape', key: 'trailSeconds', label: 'Trail (seconds)', kind: 'range', min: 0, max: 20, step: 1, only: ['scope'] },
-  { section: 'Shape', key: 'statsSpan', label: 'Worked out over', kind: 'select', options: [['soFar', 'The clip so far'], ['clip', 'The whole clip']], only: ['stats'] },
+  { section: 'Shape', key: 'statsSpan', label: 'Worked out over', kind: 'select', options: [['rideSoFar', 'The ride so far'], ['ride', 'The whole ride'], ['soFar', 'The clip so far'], ['clip', 'The whole clip']], only: ['stats'] },
   { section: 'Image', key: 'imageDial', label: 'Dial face', kind: 'image', only: ['image'], hint: 'A PNG with a clear background works best.' },
   { section: 'Image', key: 'imageMode', label: 'Picture', kind: 'select', options: [['still', 'Stays still'], ['fill', 'Fills with the value'], ['scale', 'Grows with the value']], only: ['image'] },
   { section: 'Image', key: 'imageNeedle', label: 'Needle', kind: 'image', only: ['image'], hint: 'Pointing straight up and centred in its picture. It turns around the middle.' },
@@ -102,6 +102,7 @@ export const FIELDS: Field[] = [
   { section: 'Needle', key: 'showHub', label: 'Show centre', kind: 'toggle', only: ['dial', 'vsi'] },
 
   { section: 'Map', key: 'routeColorBy', label: 'Colour route by', kind: 'select', options: [['', 'One colour'], ['speed', 'Speed'], ['gradient', 'Gradient'], ['altitude', 'Altitude'], ['heartRate', 'Heart rate'], ['power', 'Power']], only: ROUTES },
+  { section: 'Graph', key: 'graphSpan', label: 'Shows', kind: 'select', options: [['ride', 'The whole ride'], ['recent', 'The last stretch']], only: ['graph'] },
   { section: 'Graph', key: 'graphAxis', label: 'Along the bottom', kind: 'select', options: [['time', 'Time'], ['distance', 'Distance']], only: ['graph'] },
   { section: 'Graph', key: 'windowMetres', label: 'Distance shown (metres)', kind: 'range', min: 100, max: 20000, step: 100, only: ['graph'] },
   { section: 'Graph', key: 'windowSeconds', label: 'Time shown (seconds)', kind: 'range', min: 5, max: 900, step: 5, only: ['graph'] },

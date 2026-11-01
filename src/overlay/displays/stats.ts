@@ -1,12 +1,50 @@
-import { formatValue } from '../channels.ts';
+import { indexAtTime } from '../../sync/timeline.ts';
+import { formatValue, unitDef } from '../channels.ts';
 import { drawPanel, drawText, setFont, spacedLabel, type DisplayDef, type DrawEnv } from './common.ts';
 
 const SAMPLES = 200;
+/** Running figures for a whole ride, worked out once, as long rides have too many points to total each frame. */
+const running = new WeakMap<object, { low: number[]; mean: number[]; high: number[] }>();
 
-/** Lowest, average and highest over the clip, sampled evenly so every frame costs the same. */
+function runningFigures(values: (number | null)[]): { low: number[]; mean: number[]; high: number[] } {
+  let figures = running.get(values);
+  if (figures) return figures;
+  let low = NaN;
+  let high = NaN;
+  let sum = 0;
+  let count = 0;
+  figures = { low: [], mean: [], high: [] };
+  for (const v of values) {
+    if (v != null) {
+      low = Number.isNaN(low) ? v : Math.min(low, v);
+      high = Number.isNaN(high) ? v : Math.max(high, v);
+      sum += v;
+      count++;
+    }
+    figures.low.push(low);
+    figures.mean.push(count ? sum / count : NaN);
+    figures.high.push(high);
+  }
+  running.set(values, figures);
+  return figures;
+}
+
+/** Lowest, average and highest over the whole ride, up to now or to the end. */
+function summariseRide(env: DrawEnv, values: (number | null)[]): [number, number, number] | null {
+  const { t } = env.data.track;
+  const figures = runningFigures(values);
+  const i = env.style.statsSpan === 'ride' ? t.length - 1 : indexAtTime(t, env.time);
+  const { convert } = unitDef(env.channel, env.style.unit);
+  return Number.isNaN(figures.mean[i]) ? null : [convert(figures.low[i]), convert(figures.mean[i]), convert(figures.high[i])];
+}
+
+/** Lowest, average and highest, with a clip sampled evenly so every frame costs the same. */
 function summarise(env: DrawEnv): [number, number, number] | null {
+  const wholeRide = env.style.statsSpan === 'ride' || env.style.statsSpan === 'rideSoFar';
+  const values = env.data.series[env.channel.id];
+  if (wholeRide && values && !env.fromCamera) return summariseRide(env, values);
   const from = env.clipStart;
-  const to = env.style.statsSpan === 'soFar' ? Math.max(from, env.time) : env.clipEnd;
+  const to = env.style.statsSpan === 'clip' || env.style.statsSpan === 'ride' ? env.clipEnd : Math.max(from, env.time);
   let low = Infinity;
   let high = -Infinity;
   let sum = 0;

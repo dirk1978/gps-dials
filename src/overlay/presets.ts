@@ -1,5 +1,5 @@
 import { ACTIVITIES } from '../activities/index.ts';
-import { BOTTOM_DIAL, COUNTER_H, DIAL_H, DIAL_W, FOLLOW, LEFT, LIVE, MAP_H, MAP_W, RIGHT_DIAL, SIGNED, layout } from '../activities/layout.ts';
+import { BOTTOM_DIAL, COUNTER_H, DIAL_H, DIAL_W, FOLLOW, LEFT, MAP_H, MAP_W, RIGHT_DIAL, SIGNED, layout } from '../activities/layout.ts';
 import { THEMES, type Template } from './template.ts';
 
 export { layoutFor } from '../activities/index.ts';
@@ -20,7 +20,7 @@ export const PRESETS: Template[] = [
     ['distance', 'map', 0.69, 0.025, 0.298, 0.53, { mapMode: 'fitRide' }],
     ['speed', 'counter', 0.69, 0.57, 0.145, 0.135],
     ['heartRate', 'counter', 0.843, 0.57, 0.145, 0.135],
-    ['altitude', 'profile', 0.012, 0.85, 0.976, 0.125, LIVE],
+    ['altitude', 'profile', 0.012, 0.85, 0.976, 0.125],
   ]),
   layout('Circular map', [
     ['distance', 'map', LEFT, 0.65, 0.185, 0.3289, { ...FOLLOW, mapShape: 'circle', mapRotate: true, markerStyle: 'arrow' }],
@@ -31,7 +31,7 @@ export const PRESETS: Template[] = [
     ['speed', 'counter', 0.015, 0.84, 0.15, 0.135],
     ['heartRate', 'counter', 0.17, 0.84, 0.15, 0.135],
     ['gradient', 'counter', 0.325, 0.84, 0.15, 0.135, SIGNED],
-    ['altitude', 'profile', 0.48, 0.84, 0.505, 0.135, LIVE],
+    ['altitude', 'profile', 0.48, 0.84, 0.505, 0.135],
   ]),
   layout('Top ribbon', [
     ['speed', 'counter', 0.015, 0.025, 0.135, COUNTER_H],
@@ -46,7 +46,7 @@ export const PRESETS: Template[] = [
     ['gradient', 'arc', LEFT, BOTTOM_DIAL, DIAL_W, DIAL_H, { min: -5, max: 20, step: 5, decimals: 1 }],
     ['verticalSpeed', 'counter', 0.172, 0.84, 0.14, 0.135],
     ['ascent', 'counter', 0.317, 0.84, 0.14, 0.135],
-    ['altitude', 'profile', 0.462, 0.84, 0.525, 0.135, LIVE],
+    ['altitude', 'profile', 0.462, 0.84, 0.525, 0.135],
   ]),
   layout('Power and heart', [
     ['power', 'graph', LEFT, 0.72, 0.34, 0.255, { windowSeconds: 120, max: 500 }],

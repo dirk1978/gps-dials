@@ -51,6 +51,12 @@ test('recognises activities from FIT sport numbers and file types', () => {
   assert.equal(activityForExtension('.srt'), 'drone');
 });
 
+test('every built-in elevation profile covers the whole ride', () => {
+  for (const preset of PRESETS) {
+    for (const w of preset.widgets) if (w.display === 'profile') assert.notEqual(w.style.fullRide, false, preset.name);
+  }
+});
+
 test('hands out a copy, so editing a layout leaves the preset alone', () => {
   const copy = layoutFor('cycling');
   copy.widgets[0].x = 0.9;

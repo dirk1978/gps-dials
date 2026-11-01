@@ -2,7 +2,7 @@ import { indexAtTime } from '../../sync/timeline.ts';
 import { drawPanel, rgba, type DisplayDef } from './common.ts';
 
 const MIN_SPAN_M = 400;
-const SAMPLES = 200;
+const SAMPLES = 400;
 
 function indexAtDistance(distance: number[], d: number): number {
   let low = 0;

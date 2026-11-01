@@ -1,4 +1,4 @@
-import { BOTTOM_DIAL, COUNTER_H, DIAL_H, DIAL_W, FOLLOW, LEFT, LIVE, MAP_H, MAP_W, RIGHT_DIAL, layout } from './layout.ts';
+import { BOTTOM_DIAL, COUNTER_H, DIAL_H, DIAL_W, FOLLOW, LEFT, MAP_H, MAP_W, RIGHT_DIAL, layout } from './layout.ts';
 import type { ActivityDef } from './types.ts';
 
 export const running: ActivityDef = {
@@ -15,7 +15,7 @@ export const running: ActivityDef = {
     ['pace', 'counter', LEFT, 0.84, 0.17, 0.135],
     ['power', 'counter', 0.192, 0.84, 0.12, 0.135, {}, [{ channel: 'gradient', display: 'counter', style: { showSign: true } }]],
     ['cadence', 'counter', 0.322, 0.84, 0.12, 0.135, { unit: 'spm', useZones: false }, [{ channel: 'averageSpeed', display: 'counter', style: { unit: 'kmh' } }]],
-    ['altitude', 'profile', 0.452, 0.84, 0.375, 0.135, LIVE],
+    ['altitude', 'profile', 0.452, 0.84, 0.375, 0.135],
     ['speed', 'dial', RIGHT_DIAL, BOTTOM_DIAL, DIAL_W, DIAL_H, { unit: 'kmh', max: 25 }],
   ]),
 };

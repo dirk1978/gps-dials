@@ -94,13 +94,16 @@ export interface Style {
   /** The g-force at a scope's rim. */
   scopeRange: number;
   trailSeconds: number;
-  statsSpan: 'clip' | 'soFar';
+  /** What a stats panel covers: the ride or clip, up to now or all of it. */
+  statsSpan: 'rideSoFar' | 'ride' | 'soFar' | 'clip';
   /** Pictures for a home-made gauge, kept in the layout so it travels with it. */
   imageDial: string;
   imageNeedle: string;
   /** How the face follows the value when there's no needle. */
   imageMode: 'still' | 'fill' | 'scale';
 
+  /** A graph shows the whole ride, or only the last stretch. */
+  graphSpan: 'ride' | 'recent';
   graphAxis: 'time' | 'distance';
   windowMetres: number;
   windowSeconds: number;
@@ -209,8 +212,8 @@ const BASE_STYLE: Style = {
   thickness: 0.085, roundEnds: false, startAngle: 135, sweepAngle: 270, reverse: false, showNeedle: true, needleLength: 0.74, needleWidth: 0.04, showHub: true,
   orientation: 'horizontal',
   compassMode: 'card',
-  tapeSteps: 4, skyColor: '#3f7fc4', groundColor: '#7a5533', scopeRange: 0.6, trailSeconds: 4, statsSpan: 'soFar', imageDial: '', imageNeedle: '', imageMode: 'still',
-  graphAxis: 'time', windowMetres: 2000,
+  tapeSteps: 4, skyColor: '#3f7fc4', groundColor: '#7a5533', scopeRange: 0.6, trailSeconds: 4, statsSpan: 'rideSoFar', imageDial: '', imageNeedle: '', imageMode: 'still',
+  graphSpan: 'ride', graphAxis: 'time', windowMetres: 2000,
   windowSeconds: 60, fillArea: true, lineWidth: 3, showMarker: true,
   useZones: false, zones: [], hideWhenNoData: true,
   routeWidth: 5, routeOutlineColor: '#000000', routeOutlineWidth: 1.5, routeColorBy: '', dotSize: 8, markerStyle: 'dot', markerColor: '', showRemaining: true, zoomToClip: false, fullRide: true, profileSmoothing: 40,
@@ -226,8 +229,8 @@ export function resolveStyle(widget: Widget, theme: Theme, rider: Rider = DEFAUL
     ...BASE_STYLE,
     bold: theme.bold,
     italic: theme.italic,
-    // A route reads best whole; a profile is about the road around you.
-    fullRide: widget.display !== 'profile',
+    // Layouts from before this choice existed set a window, and keep it.
+    graphSpan: widget.style.windowSeconds != null || widget.style.windowMetres != null ? 'recent' : 'ride',
     useZones: zones != null,
     ...widget.style,
   };

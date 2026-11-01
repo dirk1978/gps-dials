@@ -3,13 +3,15 @@ import { autoRange, drawPanel, drawText, fraction, rgba, setFont, spacedLabel, v
 
 const SAMPLES = 240;
 
-/** A value over the last stretch of time or distance, with the current reading marked at the end. */
+/** A value over the whole ride or the last stretch, against time or distance, with the current reading marked. */
 export const graph: DisplayDef = {
   id: 'graph',
   label: 'Graph',
   draw(env) {
     const { ctx, box, time, valueAt, valueText, unitLabel, unit } = env;
-    const style = autoRange(env.style, env);
+    const { t } = env.data.track;
+    const wholeRide = env.style.graphSpan === 'ride';
+    const style = autoRange(env.style, wholeRide ? { ...env, clipStart: t[0], clipEnd: t[t.length - 1] } : env);
     drawPanel(env);
     const pad = 10 * unit;
     const headline = style.showValue || style.showLabel ? box.h * 0.26 : 0;
@@ -18,11 +20,15 @@ export const graph: DisplayDef = {
     const points: [number, number][] = [];
     const readings: number[] = [];
     const here = seriesValue(env.data, 'distance', time) ?? 0;
+    const byDistance = style.graphAxis === 'distance';
+    const total = env.data.distance[env.data.distance.length - 1];
     for (let i = 0; i <= SAMPLES; i++) {
-      const back = 1 - i / SAMPLES;
-      const metres = here - style.windowMetres * back;
-      if (style.graphAxis === 'distance' && metres < 0) continue;
-      const v = valueAt(style.graphAxis === 'distance' ? timeAtDistance(env.data, metres) : time - style.windowSeconds * back);
+      const along = i / SAMPLES;
+      // The whole ride fills the width, with the line reaching only as far as now.
+      const metres = wholeRide ? total * along : here - style.windowMetres * (1 - along);
+      const moment = wholeRide ? t[0] + (t[t.length - 1] - t[0]) * along : time - style.windowSeconds * (1 - along);
+      if (byDistance ? metres < 0 || metres > here + 1e-6 : moment > time + 1e-6) continue;
+      const v = valueAt(byDistance ? timeAtDistance(env.data, metres) : moment);
       if (v == null) continue;
       points.push([plot.x + (i / SAMPLES) * plot.w, plot.y + plot.h * (1 - fraction(style, v))]);
       readings.push(v);

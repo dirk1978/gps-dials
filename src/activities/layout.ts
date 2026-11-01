@@ -18,7 +18,6 @@ export const STRIP_H = 0.11;
 
 /** Close enough to see the map travel: at 14 a whole ride's clip moved it by barely 2 pixels a second. */
 export const FOLLOW: Partial<Style> = { mapMode: 'follow', mapZoom: 16.5 };
-export const LIVE: Partial<Style> = { fullRide: false };
 export const SIGNED: Partial<Style> = { showSign: true };
 
 export function layout(name: string, specs: Spec[], theme: Theme = THEMES[0]): Template {

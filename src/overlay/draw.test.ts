@@ -54,6 +54,13 @@ test('colours a route by its data', () => {
   assert.ok(render({ ...defaultTemplate, widgets: [route] }) > 0);
 });
 
+test('new profiles and graphs cover the whole ride, and saved windows stay', () => {
+  assert.equal(resolveStyle(newWidget('altitude', 'profile'), THEMES[0]).fullRide, true);
+  assert.equal(resolveStyle(newWidget('speed', 'graph'), THEMES[0]).graphSpan, 'ride');
+  const saved = { ...newWidget('speed', 'graph'), style: { windowSeconds: 120 } };
+  assert.equal(resolveStyle(saved, THEMES[0]).graphSpan, 'recent');
+});
+
 test('every theme draws the default layout', () => {
   for (const theme of THEMES) assert.ok(render({ ...defaultTemplate, theme }) > 100, theme.name);
 });

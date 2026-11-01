@@ -1,4 +1,4 @@
-import { BOTTOM_DIAL, COUNTER_H, DIAL_H, DIAL_W, FOLLOW, LEFT, LIVE, MAP_H, MAP_W, RIGHT_DIAL, SIGNED, STRIP_H, STRIP_Y, layout } from './layout.ts';
+import { BOTTOM_DIAL, COUNTER_H, DIAL_H, DIAL_W, FOLLOW, LEFT, MAP_H, MAP_W, RIGHT_DIAL, SIGNED, STRIP_H, STRIP_Y, layout } from './layout.ts';
 import type { ActivityDef } from './types.ts';
 
 export const cycling: ActivityDef = {
@@ -17,6 +17,6 @@ export const cycling: ActivityDef = {
     ['leanAngle', 'tilt', RIGHT_DIAL, 0.415, DIAL_W, 0.17],
     ['power', 'dial', LEFT, BOTTOM_DIAL, DIAL_W, DIAL_H, {}, [{ channel: 'gForce', display: 'scope' }]],
     ['cadence', 'dial', 0.172, BOTTOM_DIAL, DIAL_W, DIAL_H, {}, [{ channel: 'accelForward', display: 'vsi' }]],
-    ['altitude', 'profile', 0.335, STRIP_Y, 0.49, STRIP_H, LIVE],
+    ['altitude', 'profile', 0.335, STRIP_Y, 0.49, STRIP_H],
   ]),
 };
