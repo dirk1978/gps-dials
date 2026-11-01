@@ -55,7 +55,8 @@
     "publish": {
       "provider": "github",
       "owner": "dirk1978",
-      "repo": "gps-dials"
+      "repo": "gps-dials",
+      "releaseType": "release"
     },
     "win": {
       "target": [
