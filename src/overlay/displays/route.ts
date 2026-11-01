@@ -1,4 +1,4 @@
-import { indexAtTime } from '../../sync/timeline.ts';
+import { indexAtTime, positionAt } from '../../sync/timeline.ts';
 import { drawPanel, type DisplayDef } from './common.ts';
 import { drawMarker, drawRoute, trackHeading } from './route-line.ts';
 
@@ -35,16 +35,18 @@ export const route: DisplayDef = {
     const scale = Math.min(box.w / spanX, box.h / spanY) * 0.84;
     const left = box.x + (box.w - spanX * scale) / 2;
     const top = box.y + (box.h - spanY * scale) / 2;
-    const project = (i: number): [number, number] => [left + (track.lon[i] - minLon) * squash * scale, top + (maxLat - track.lat[i]) * scale];
+    const place = (lat: number, lon: number): [number, number] => [left + (lon - minLon) * squash * scale, top + (maxLat - lat) * scale];
+    const project = (i: number) => place(track.lat[i], track.lon[i]);
 
     ctx.save();
     ctx.beginPath();
     ctx.roundRect(box.x, box.y, box.w, box.h, Math.min(style.cornerRadius * unit, box.h / 2));
     ctx.clip();
     const now = Math.min(to, indexAtTime(track.t, time));
-    drawRoute(env, project, from, to, now);
-    const [x, y] = project(now);
-    drawMarker(env, x, y, trackHeading(track, now));
+    const here = positionAt(track, time);
+    const head = place(here.lat, here.lon);
+    drawRoute(env, project, from, to, now, head);
+    drawMarker(env, head[0], head[1], trackHeading(track, now));
     ctx.restore();
   },
 };

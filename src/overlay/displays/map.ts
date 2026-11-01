@@ -1,4 +1,4 @@
-import { indexAtTime } from '../../sync/timeline.ts';
+import { indexAtTime, positionAt } from '../../sync/timeline.ts';
 import { mapProvider, mapView, projectX, projectY, tileUrl, visibleTiles } from '../map-view.ts';
 import { rgba, setFont, type DisplayDef, type DrawEnv } from './common.ts';
 import { drawMarker, drawRoute, trackHeading } from './route-line.ts';
@@ -63,9 +63,10 @@ export const map: DisplayDef = {
     const from = style.fullRide ? 0 : indexAtTime(track.t, clipStart);
     const to = style.fullRide ? last : indexAtTime(track.t, clipEnd);
     const now = indexAtTime(track.t, time);
-    drawRoute(env, project, from, to, now);
-    const [x, y] = project(now);
-    drawMarker(env, x, y, trackHeading(track, now) + view.rotation);
+    const here = positionAt(track, time);
+    const head: [number, number] = [(projectX(here.lon) - view.cx) * view.worldSize, (projectY(here.lat) - view.cy) * view.worldSize];
+    drawRoute(env, project, from, to, now, head);
+    drawMarker(env, head[0], head[1], trackHeading(track, now) + view.rotation);
     ctx.restore();
 
     if (style.borderWidth > 0) {

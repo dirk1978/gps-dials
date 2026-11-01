@@ -76,6 +76,14 @@ test('averages values, levelling altitude first so baselines do not step', () =>
   assert.ok(Math.abs(points[10].altitude! - a.points[10].altitude!) < 0.01);
 });
 
+test('moves steadily when one source records far less often', () => {
+  const sparse: Source = { name: 'Garmin', points: ride().filter((_, i) => i % 10 === 0) };
+  const steady: Source = { name: 'Wahoo', points: ride() };
+  const points = combineSources([steady, sparse], [0, 0], { ...allFirst, position: 'average' });
+  const steps = points.slice(1, 300).map((p, i) => p.lat - points[i].lat);
+  assert.ok(Math.max(...steps) - Math.min(...steps) < 1e-7, 'the position should advance evenly');
+});
+
 test('lines up sources whose clocks differ', () => {
   const b: Source = { name: 'Wahoo', points: ride({ clockAhead: 5, heart: 150 }) };
   const points = combineSources([a, b], [0, 5], allFirst);

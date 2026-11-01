@@ -2,6 +2,7 @@ import type { TrackPoint } from '../activity/types.ts';
 import { toColumns } from '../activity/columns.ts';
 import { prepareOverlayData, seriesValue, type OverlayData } from '../overlay/data.ts';
 import type { ChannelId } from '../overlay/channels.ts';
+import { positionAt } from '../sync/timeline.ts';
 
 const MAX_LAG_S = 30;
 const MPS_TO_MPH = 2.23694;
@@ -132,9 +133,9 @@ export function compareSources(reference: Source, other: Source): PairComparison
   const from = Math.max(a.track.t[0], b.track.t[0] - lag);
   const to = Math.min(a.track.t.at(-1)!, b.track.t.at(-1)! - lag);
   for (let t = from; t <= to; t += 2) {
-    const i = nearest(a.track.t, t);
-    const j = nearest(b.track.t, t + lag);
-    gaps.push(metres(a.track.lat[i], a.track.lon[i], b.track.lat[j], b.track.lon[j]));
+    const p = positionAt(a.track, t);
+    const q = positionAt(b.track, t + lag);
+    gaps.push(metres(p.lat, p.lon, q.lat, q.lon));
   }
 
   const altitude = differences(a, b, 'altitude', lag);
@@ -151,17 +152,6 @@ export function compareSources(reference: Source, other: Source): PairComparison
     heartRateRms: usable('heartRate') ? rms(differences(a, b, 'heartRate', lag)) : null,
     gradientRms: usable('gradient') ? rms(differences(a, b, 'gradient', lag)) : null,
   };
-}
-
-function nearest(times: number[], t: number): number {
-  let low = 0;
-  let high = times.length - 1;
-  while (low < high) {
-    const mid = (low + high) >> 1;
-    if (times[mid] < t) low = mid + 1;
-    else high = mid;
-  }
-  return low;
 }
 
 export interface ProfilePoint {
@@ -278,12 +268,11 @@ export function combineSources(sources: Source[], lags: number[], choices: Choic
 
   const points: TrackPoint[] = [];
   for (let t = Math.ceil(from); t <= to; t++) {
-    const place = data.map((d, i) => {
-      const j = nearest(d.track.t, t + lags[i]);
-      return [d.track.lat[j], d.track.lon[j]];
-    });
-    const lat = pick(place.map(p => p[0]), choices.position);
-    const lon = pick(place.map(p => p[1]), choices.position);
+    // Devices record at different rates, and snapping to a recorded point would make a
+    // sparse track sit still and then jump, which shows as stop-start movement on the map.
+    const place = data.map((d, i) => positionAt(d.track, t + lags[i]));
+    const lat = pick(place.map(p => p.lat), choices.position);
+    const lon = pick(place.map(p => p.lon), choices.position);
     if (lat == null || lon == null) continue;
     points.push({
       t,

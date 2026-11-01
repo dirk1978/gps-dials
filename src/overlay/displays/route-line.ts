@@ -5,8 +5,8 @@ type Project = (i: number) => [number, number];
 
 const MAX_POINTS = 1500;
 
-function strokeLine(ctx: Ctx, project: Project, from: number, to: number, step: number, color: string, width: number): void {
-  if (to <= from || width <= 0) return;
+function strokeLine(ctx: Ctx, project: Project, from: number, to: number, step: number, color: string, width: number, end?: [number, number]): void {
+  if ((to <= from && !end) || width <= 0) return;
   ctx.strokeStyle = color;
   ctx.lineWidth = width;
   ctx.lineJoin = 'round';
@@ -15,11 +15,16 @@ function strokeLine(ctx: Ctx, project: Project, from: number, to: number, step: 
   ctx.moveTo(...project(from));
   for (let i = from + step; i < to; i += step) ctx.lineTo(...project(i));
   ctx.lineTo(...project(to));
+  if (end) ctx.lineTo(...end);
   ctx.stroke();
 }
 
-/** The track, split into the part ridden and the part to come, each with an optional outline. */
-export function drawRoute(env: DrawEnv, project: Project, from: number, to: number, now: number): void {
+/**
+ * The track, split into the part ridden and the part to come, each with an optional
+ * outline. `head` is the exact current position, so the ridden line reaches the marker
+ * even when recorded points are many seconds apart.
+ */
+export function drawRoute(env: DrawEnv, project: Project, from: number, to: number, now: number, head: [number, number]): void {
   const { ctx, style, unit } = env;
   const step = Math.max(1, Math.floor((to - from) / MAX_POINTS));
   const width = style.routeWidth * unit;
@@ -28,11 +33,11 @@ export function drawRoute(env: DrawEnv, project: Project, from: number, to: numb
 
   if (outline > 0) {
     if (style.showRemaining) strokeLine(ctx, project, from, to, step, style.routeOutlineColor, width + outline);
-    else strokeLine(ctx, project, from, ridden, step, style.routeOutlineColor, width + outline);
+    else strokeLine(ctx, project, from, ridden, step, style.routeOutlineColor, width + outline, head);
   }
   // Nearly solid, or the dark outline beneath it shows through and the line reads as black.
   if (style.showRemaining) strokeLine(ctx, project, from, to, step, rgba(style.trackColor, Math.max(style.trackOpacity, 0.92)), width);
-  strokeLine(ctx, project, from, ridden, step, style.color, width);
+  strokeLine(ctx, project, from, ridden, step, style.color, width, head);
 }
 
 /** Your position, as a dot, ring or arrow. `angle` is the direction of travel on screen, in radians from up. */
