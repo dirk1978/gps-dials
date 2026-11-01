@@ -6,6 +6,9 @@ export interface TrackColumns {
   speed: (number | null)[];
   heartRate: (number | null)[];
   altitude: (number | null)[];
+  cadence?: (number | null)[];
+  power?: (number | null)[];
+  temperature?: (number | null)[];
 }
 
 /** Index of the last point at or before `time`, clamped to the track. */

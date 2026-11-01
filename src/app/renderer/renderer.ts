@@ -1,9 +1,21 @@
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import '@fontsource/barlow-condensed/latin-600.css';
+import '@fontsource/barlow-condensed/latin-700.css';
+import '@fontsource/barlow-condensed/latin-600-italic.css';
+import '@fontsource/barlow-condensed/latin-700-italic.css';
 import './styles.css';
+import { createCompareView, type CompareApi, type SourceItem } from './compare-view.ts';
+import { createEditor } from './editor.ts';
 import { clipStartFromPin, indexAtTime, nearestIndex, positionAt, type TrackColumns } from '../../sync/timeline.ts';
 import type { SessionResult, SyncResult } from '../../sync/engine.ts';
+import { prepareOverlayData, type OverlayData } from '../../overlay/data.ts';
+import { DISPLAY_FONT, drawFrame, type Ctx } from '../../overlay/draw.ts';
+import { defaultTemplate, normaliseTemplate, type Template } from '../../overlay/template.ts';
 import type { FolderClip, FolderTrack } from '../folder.ts';
+import type { BatchProgress, OverlayBatch } from '../overlay-queue.ts';
+
+type Mode = 'sync' | 'design' | 'compare';
 
 interface Clip {
   path: string;
@@ -38,7 +50,7 @@ interface SavedSync {
 
 declare global {
   interface Window {
-    gpsDials: {
+    gpsDials: CompareApi & {
       pickFile(kind: 'clip' | 'track'): Promise<string | null>;
       pickFolder(): Promise<string | null>;
       scanFolder(dir: string): Promise<{ clips: FolderClip[]; tracks: FolderTrack[] }>;
@@ -47,16 +59,42 @@ declare global {
       autoSync(job: { clip: string; upsideDown?: boolean; trackPath: string }): Promise<SyncResult>;
       autoSync(job: { clips: string[]; trackPath: string }): Promise<SessionResult[]>;
       saveSync(clip: string, data: SavedSync): Promise<string>;
+      listLayouts(): Promise<string[]>;
+      loadLayout(name: string): Promise<Template>;
+      saveLayout(name: string, template: Template): Promise<void>;
+      deleteLayout(name: string): Promise<void>;
+      loadWorkingCopy(): Promise<Template | null>;
+      saveWorkingCopy(template: Template): Promise<void>;
+      importLayout(): Promise<{ template: Template; skipped: string[] } | null>;
+      importLayoutPath(path: string): Promise<{ template: Template; skipped: string[] }>;
+      exportLayout(template: Template): Promise<string | null>;
+      exportOverlays(batch: OverlayBatch): Promise<{ done: number; failed: number; cancelled: boolean; outDir: string }>;
+      cancelOverlays(): Promise<void>;
+      onOverlayProgress(listener: (progress: BatchProgress) => void): void;
+      getMapToken(): Promise<string>;
+      setMapToken(token: string): Promise<void>;
       pathForFile(file: File): string;
       onProxyProgress(listener: (fraction: number) => void): void;
       onSyncProgress(listener: (done: number, total: number) => void): void;
     };
-    app: { loadPaths(paths: string[]): Promise<void>; openFolder(dir: string): Promise<void>; selectClip(path: string): Promise<void>; state(): unknown };
+    app: {
+      loadPaths(paths: string[]): Promise<void>;
+      openFolder(dir: string): Promise<void>;
+      selectClip(path: string): Promise<void>;
+      generate(options?: { outDir?: string; limit?: number }): Promise<void>;
+      setMode(next: Mode): void;
+      template(): Template;
+      importLayoutFile(path: string): Promise<void>;
+      selectWidget(id: string | null): void;
+      state(): unknown;
+    };
   }
 }
 
 const MPH_PER_MS = 2.23694;
-const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services';
+const ESRI_CREDIT = 'Imagery &copy; Esri, Vantor, Earthstar Geographics, and the GIS User Community';
+const LAYER_KEY = 'gps-dials.map-layer';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const video = $<HTMLVideoElement>('video');
@@ -75,21 +113,86 @@ let draggingVideo = false;
 let manualRotation = 0;
 let folderClips: FolderClip[] = [];
 let folderTracks: FolderTrack[] = [];
-const sessionResults = new Map<string, SessionResult>();
+/** Clip results for each GPS source, because the same clip lands at a different time on each device's clock. */
+const sessions = new Map<string, Map<string, SessionResult>>();
+let sessionResults = new Map<string, SessionResult>();
+/** Where Auto-sync put each clip, to measure how far a hand correction moved it. */
+const autoStarts = new Map<string, number>();
+let overlayData: OverlayData | null = null;
+let lastOverlayDraw = 0;
+let exporting = false;
+const exportProgress = new Map<string, BatchProgress>();
+let template: Template = structuredClone(defaultTemplate);
+let mode: Mode = 'sync';
 
 const map = L.map('map', { zoomControl: true, attributionControl: true }).setView([52, 0], 5);
-const tiles = L.tileLayer(TILE_URL, {
-  maxZoom: 19,
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-}).addTo(map);
 let tileFailures = 0;
-tiles.on('tileerror', () => {
-  // The track still works without a basemap, which is the failure that broke VIRB's sync screen.
-  if (++tileFailures === 4) showMapNote('Map images unavailable. The track still works.');
-});
-tiles.on('tileload', () => {
+
+function tileLayer(url: string, attribution: string): L.TileLayer {
+  const layer = L.tileLayer(url, { maxZoom: 19, attribution });
+  layer.on('tileerror', () => {
+    // The track still works without a basemap, which is the failure that broke VIRB's sync screen.
+    if (++tileFailures === 4) showMapNote('Map images unavailable. The track still works.');
+  });
+  layer.on('tileload', () => {
+    tileFailures = 0;
+    $('map-note').hidden = true;
+  });
+  return layer;
+}
+
+const esriSatellite = () => tileLayer(`${ESRI}/World_Imagery/MapServer/tile/{z}/{y}/{x}`, ESRI_CREDIT);
+
+function mapLayers(mapboxToken: string): Record<string, L.Layer> {
+  const layers: Record<string, L.Layer> = {
+    Street: tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'),
+    Satellite: esriSatellite(),
+    Hybrid: L.layerGroup([
+      esriSatellite(),
+      tileLayer(`${ESRI}/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}`, ''),
+      tileLayer(`${ESRI}/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}`, ''),
+    ]),
+  };
+  if (mapboxToken) {
+    const mapbox = (style: string) => tileLayer(
+      `https://api.mapbox.com/styles/v1/mapbox/${style}/tiles/256/{z}/{x}/{y}?access_token=${encodeURIComponent(mapboxToken)}`,
+      '&copy; Mapbox &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    );
+    layers['Mapbox Satellite'] = mapbox('satellite-v9');
+    layers['Mapbox Hybrid'] = mapbox('satellite-streets-v12');
+  }
+  return layers;
+}
+
+function savedLayerName(): string | null {
+  try {
+    return localStorage.getItem(LAYER_KEY);
+  } catch {
+    return null;
+  }
+}
+
+let layerControl: L.Control.Layers | null = null;
+let currentLayers: L.Layer[] = [];
+
+async function buildMapLayers(): Promise<void> {
+  const layers = mapLayers(await api.getMapToken());
+  currentLayers.forEach(layer => layer.remove());
+  layerControl?.remove();
+  currentLayers = Object.values(layers);
+  const wanted = savedLayerName();
+  layers[wanted && layers[wanted] ? wanted : 'Street'].addTo(map);
+  layerControl = L.control.layers(layers, undefined, { position: 'topright', collapsed: false }).addTo(map);
+}
+
+map.on('baselayerchange', event => {
   tileFailures = 0;
   $('map-note').hidden = true;
+  try {
+    localStorage.setItem(LAYER_KEY, event.name);
+  } catch {
+    // Remembering the layer is only a convenience.
+  }
 });
 
 const line = L.polyline([], { color: '#3fb6a8', weight: 4, opacity: 0.9, interactive: false }).addTo(map);
@@ -169,9 +272,42 @@ function renderSyncState(detail?: string): void {
   $('nudge').hidden = !linked;
   $<HTMLButtonElement>('lock').textContent = linked ? 'Adjust by hand' : 'Match these two points';
   $<HTMLButtonElement>('lock').disabled = !(clip && track);
+  const whole = clipsForTrack().length > 1;
   $<HTMLButtonElement>('auto-sync').disabled = !(track && (clip || folderClips.length > 0));
-  $<HTMLButtonElement>('save').disabled = !linked;
+  $('auto-sync').textContent = whole ? 'Auto-sync all clips' : 'Auto-sync';
+  $<HTMLButtonElement>('save').disabled = !(linked || sessionResults.size > 0);
+  $('save').textContent = sessionResults.size > 1 ? 'Save all' : 'Save';
+  renderApplyShift();
   renderClipLine();
+  renderGenerateButton();
+  renderOverlayPreview();
+  if (mode === 'design') editor.renderSelection();
+}
+
+const estimatedClips = () => [...sessionResults.values()].filter(r => r.basis === 'clock from other clips');
+
+/** How far by hand the current clip has moved from Auto-sync, if at all. */
+function handShift(): number {
+  if (!clip || clipStart == null || sessionResults.get(clip.path)?.basis !== 'set by hand') return 0;
+  const auto = autoStarts.get(clip.path);
+  return auto == null ? 0 : clipStart - auto;
+}
+
+function renderApplyShift(): void {
+  const button = $('apply-shift');
+  const count = estimatedClips().length;
+  const shift = handShift();
+  button.hidden = count === 0 || Math.abs(shift) < 0.01;
+  button.textContent = `Move ${count} estimated clips by ${shift > 0 ? '+' : ''}${shift.toFixed(1)} s too`;
+}
+
+function applyShiftToEstimated(): void {
+  const shift = handShift();
+  const estimated = estimatedClips();
+  for (const r of estimated) sessionResults.set(r.path, { ...r, clipStart: r.clipStart + shift });
+  renderClipList();
+  renderSyncState($('sync-detail').textContent ?? undefined);
+  setStatus(`Moved ${estimated.length} estimated clips. Matched and by-hand clips were left alone.`);
 }
 
 /** After a sync, the map follows the video. */
@@ -181,12 +317,244 @@ function followVideo(): void {
   renderTrackPosition();
 }
 
-function tick(): void {
+/** Same drawing code as the export, sized to sit exactly over the picture. */
+function renderOverlayPreview(): void {
+  const canvas = $<HTMLCanvasElement>('overlay');
+  const ctx = canvas.getContext('2d')!;
+  if (track && overlayData && template.gradientSpan != null && overlayData.gradientSpan !== template.gradientSpan) {
+    overlayData = prepareOverlayData(track.columns, template.gradientSpan);
+  }
+  const start = clipStart ?? (mode === 'design' ? designStart() : null);
+  const show = ($<HTMLInputElement>('show-dials').checked || mode === 'design') && start != null && clip && overlayData && video.videoWidth > 0;
+  if (!show || start == null || !clip || !overlayData) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    return;
+  }
+  const sideways = rotation() % 180 !== 0;
+  const aspect = sideways ? video.videoHeight / video.videoWidth : video.videoWidth / video.videoHeight;
+  const stage = $('video-stage');
+  const cssWidth = Math.min(stage.clientWidth, stage.clientHeight * aspect);
+  const width = 1920;
+  const height = Math.round(width / aspect);
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+  canvas.style.width = `${cssWidth}px`;
+  canvas.style.height = `${cssWidth / aspect}px`;
+  ctx.clearRect(0, 0, width, height);
+  drawFrame(ctx as unknown as Ctx, {
+    width,
+    height,
+    template,
+    data: overlayData,
+    clipStart: start,
+    clipEnd: start + clip.duration,
+  }, start + video.currentTime);
+}
+
+/** Lets a layout be designed before the clip is synced, using whatever part of the track its clock points to. */
+function designStart(): number | null {
+  if (!track) return null;
+  const { t } = track.columns;
+  return clip && clip.clockTime >= t[0] && clip.clockTime <= t[t.length - 1] ? clip.clockTime : t[0];
+}
+
+function pictureRect(): { left: number; top: number; width: number; height: number } | null {
+  const canvas = $<HTMLCanvasElement>('overlay');
+  const stage = $('video-stage');
+  if (!clip || !canvas.clientWidth) return null;
+  return {
+    left: (stage.clientWidth - canvas.clientWidth) / 2,
+    top: (stage.clientHeight - canvas.clientHeight) / 2,
+    width: canvas.clientWidth,
+    height: canvas.clientHeight,
+  };
+}
+
+const editor = createEditor({
+  template: () => template,
+  setTemplate: next => {
+    template = next;
+    renderOverlayPreview();
+  },
+  pictureRect,
+  redraw: renderOverlayPreview,
+  channelsWithData: () => overlayData?.available ?? null,
+  status: setStatus,
+  saveWorkingCopy: t => { void api.saveWorkingCopy(t); },
+});
+
+/** Every recording that overlaps the current one in time. */
+function overlappingSources(): SourceItem[] {
+  const selected = folderTracks.find(t => t.path === track?.path);
+  if (!selected) return [];
+  const same = folderTracks.filter(t => t.start < selected.end && t.end > selected.start && t.device !== 'Combined');
+  // Names can match, for example two Garmins, and the comparison has to tell them apart.
+  return same.map(t => ({ path: t.path, name: same.filter(o => o.device === t.device).length > 1 ? `${t.device} (${t.name})` : t.device }));
+}
+
+const compareView = createCompareView($('compare-pane'), api, {
+  sources: overlappingSources,
+  status: setStatus,
+  addCombined: async (result, name) => {
+    const entry: FolderTrack = { path: result.path, name, device: 'Combined', start: result.start, end: result.end, points: result.points, clips: clipsForTrack().length };
+    folderTracks = [...folderTracks.filter(t => t.path !== result.path), entry];
+    const select = $<HTMLSelectElement>('track-select');
+    const option = document.createElement('option');
+    option.value = result.path;
+    option.textContent = `Combined: ${name}, ${entry.clips} clips`;
+    select.append(option);
+    await loadTrack(result.path);
+    renderClipList();
+  },
+});
+
+function setMode(next: Mode): void {
+  mode = next;
+  document.body.classList.toggle('mode-design', next === 'design');
+  document.body.classList.toggle('mode-compare', next === 'compare');
+  for (const name of ['sync', 'design', 'compare'] as Mode[]) {
+    $(`tab-${name}`).setAttribute('aria-pressed', String(name === next));
+  }
+  $('video-pane').hidden = next === 'compare';
+  $('map-pane').hidden = next !== 'sync';
+  $('clip-panel').hidden = next === 'compare' || (next === 'design' ? true : folderTracks.length === 0);
+  $('layers-panel').hidden = next !== 'design';
+  $('inspector').hidden = next !== 'design';
+  $('compare-pane').hidden = next !== 'compare';
+  renderRotation();
+  renderOverlayPreview();
+  if (next === 'sync') map.invalidateSize();
+  if (next === 'compare') compareView.show().catch(fail);
+  if (next === 'design') {
+    editor.refresh();
+    if (!clip) setStatus('Open a folder or video to design over your own footage.');
+  }
+}
+
+async function refreshLayouts(selected = ''): Promise<void> {
+  const names = await api.listLayouts();
+  const select = $<HTMLSelectElement>('layout-select');
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = 'Saved layouts';
+  select.replaceChildren(placeholder, ...names.map(name => {
+    const option = document.createElement('option');
+    option.value = name;
+    option.textContent = name;
+    return option;
+  }));
+  select.value = selected;
+}
+
+async function bringInLayout(imported: { template: Template; skipped: string[] }): Promise<void> {
+  editor.replace(imported.template);
+  const note = imported.skipped.length ? ` Couldn't bring across: ${imported.skipped.join(', ')}.` : '';
+  setStatus(`Opened ${imported.template.name}.${note}`);
+}
+
+function wireLayoutTools(): void {
+  $<HTMLSelectElement>('layout-select').addEventListener('change', async event => {
+    const name = (event.target as HTMLSelectElement).value;
+    if (name) editor.replace(await api.loadLayout(name));
+  });
+  $('layout-save').addEventListener('click', () => {
+    const input = $<HTMLInputElement>('layout-name');
+    input.value = template.name;
+    $<HTMLDialogElement>('layout-dialog').showModal();
+  });
+  $('layout-confirm').addEventListener('click', async () => {
+    const name = $<HTMLInputElement>('layout-name').value.trim();
+    if (!name) return;
+    template.name = name;
+    await api.saveLayout(name, template);
+    await refreshLayouts(name);
+    setStatus(`Saved ${name}`);
+  });
+  $('layout-delete').addEventListener('click', async () => {
+    const name = $<HTMLSelectElement>('layout-select').value;
+    if (!name) {
+      setStatus('Choose a saved layout to delete first.');
+      return;
+    }
+    await api.deleteLayout(name);
+    await refreshLayouts();
+    setStatus(`Deleted ${name}`);
+  });
+  $('layout-import').addEventListener('click', async () => {
+    try {
+      const imported = await api.importLayout();
+      if (imported) await bringInLayout(imported);
+    } catch (error) {
+      fail(error);
+    }
+  });
+  $('layout-export').addEventListener('click', async () => {
+    const path = await api.exportLayout(template);
+    if (path) setStatus(`Exported to ${path}`);
+  });
+  $('layout-reset').addEventListener('click', () => editor.resetToDefault());
+  $('undo').addEventListener('click', () => editor.undo());
+  $('redo').addEventListener('click', () => editor.redo());
+}
+
+function tick(now: number): void {
   if (!video.paused) {
     renderVideoPosition();
     followVideo();
+    // Dials update ten times a second in the export, so match that here.
+    if (now - lastOverlayDraw >= 100) {
+      lastOverlayDraw = now;
+      renderOverlayPreview();
+    }
   }
   requestAnimationFrame(tick);
+}
+
+function renderGenerateButton(): void {
+  const button = $<HTMLButtonElement>('generate');
+  const count = sessionResults.size;
+  button.disabled = !exporting && count === 0;
+  button.textContent = exporting ? 'Cancel' : count > 0 ? `Generate ${count} overlay${count === 1 ? '' : 's'}` : 'Generate overlays';
+}
+
+function reportExport(): void {
+  const all = [...exportProgress.values()];
+  const finished = all.filter(p => p.state !== 'running').length;
+  const active = all.filter(p => p.state === 'running').map(p => `${(p.fraction * 100).toFixed(0)}%`).join(', ');
+  setStatus(`Generated ${finished} of ${sessionResults.size}${active ? ` (working on ${active})` : ''}`);
+}
+
+async function generateOverlays(options: { outDir?: string; limit?: number } = {}): Promise<void> {
+  if (exporting) {
+    await api.cancelOverlays();
+    setStatus('Stopping after removing unfinished files');
+    return;
+  }
+  if (!track) return;
+  const items = [...sessionResults.values()].slice(0, options.limit ?? Infinity).map(r => ({
+    clip: r.path,
+    clipStart: r.clipStart,
+    extraRotation: r.path === clip?.path ? (rotation() - clip.fileRotation + 360) % 360 : 0,
+  }));
+  if (items.length === 0) return;
+  exporting = true;
+  exportProgress.clear();
+  renderGenerateButton();
+  const started = performance.now();
+  try {
+    const format = $<HTMLSelectElement>('overlay-format').value as OverlayBatch['format'];
+    const result = await api.exportOverlays({ items, trackPath: track.path, format, template, outDir: options.outDir });
+    const minutes = ((performance.now() - started) / 60000).toFixed(1);
+    const failed = result.failed ? `, ${result.failed} failed` : '';
+    setStatus(`${result.cancelled ? 'Cancelled. ' : ''}${result.done} overlays in ${minutes} min${failed}. Saved in ${result.outDir}`);
+  } catch (error) {
+    fail(error);
+  } finally {
+    exporting = false;
+    renderGenerateButton();
+  }
 }
 
 function seekVideo(seconds: number): void {
@@ -194,6 +562,7 @@ function seekVideo(seconds: number): void {
   video.currentTime = Math.min(clip.duration, Math.max(0, seconds));
   renderVideoPosition();
   followVideo();
+  renderOverlayPreview();
 }
 
 function setTrackTime(time: number): void {
@@ -209,9 +578,15 @@ function applySync(start: number, how: 'auto' | 'manual', sure: boolean, detail:
   method = how;
   confident = sure;
   // A correction has to survive moving on to the next clip in the list.
-  const held = clip && sessionResults.get(clip.path);
-  if (held && how === 'manual') {
-    sessionResults.set(held.path, { ...held, clipStart: start, confident: true, basis: 'set by hand' });
+  if (clip && how === 'manual') {
+    sessionResults.set(clip.path, {
+      clockTime: clip.clockTime, turnR: 0, speedR: null, lead: 0, runnerUp: null, deviceName: '', source: '', motionSeconds: 0,
+      ...sessionResults.get(clip.path),
+      path: clip.path,
+      clipStart: start,
+      confident: true,
+      basis: 'set by hand',
+    });
     renderClipList();
   }
   renderSyncState(detail);
@@ -236,7 +611,14 @@ const BASIS_TEXT: Record<SessionResult['basis'], string> = {
   'clock from other clips': 'Too little turning to check alone, so it uses the camera clock worked out from other clips.',
   'guided by other clips': 'Matched from camera movement and the rest of the day.',
   'own motion': 'Matched from camera movement.',
-  'set by hand': 'Set by hand.',
+  'set by hand': 'Set by hand. This changes this clip only.',
+};
+
+const CLIP_LABELS: Record<SessionResult['basis'], string> = {
+  'clock from other clips': 'Estimated',
+  'guided by other clips': 'Matched',
+  'own motion': 'Matched',
+  'set by hand': 'By hand',
 };
 
 function applySessionResult(r: SessionResult): void {
@@ -270,14 +652,18 @@ async function runAutoSync(): Promise<void> {
     const day = clipsForTrack();
     if (day.length > 1) {
       const results = await api.autoSync({ clips: day.map(c => c.path), trackPath: track.path });
-      sessionResults.clear();
-      for (const r of results) sessionResults.set(r.path, r);
+      let kept = 0;
+      for (const r of results) {
+        autoStarts.set(r.path, r.clipStart);
+        if (sessionResults.get(r.path)?.basis === 'set by hand') kept++;
+        else sessionResults.set(r.path, r);
+      }
       renderClipList();
       const current = clip && sessionResults.get(clip.path);
       if (current) applySessionResult(current);
       else renderSyncState();
       const steady = results.filter(r => r.confident).length;
-      setStatus(`${steady} of ${results.length} clips synced in ${seconds()} s`);
+      setStatus(`${steady} of ${results.length} clips synced in ${seconds()} s${kept ? `, kept ${kept} set by hand` : ''}`);
     } else if (clip) {
       const r = await api.autoSync({ clip: clip.path, upsideDown: isInverted(), trackPath: track.path });
       const note = r.confident
@@ -317,6 +703,7 @@ function renderRotation(): void {
   video.style.transform = `translate(-50%, -50%) rotate(${degrees}deg)`;
   const corrected = clip?.upsideDown && $<HTMLInputElement>('auto-rotate').checked;
   $('rotate-note').textContent = corrected ? 'Turned the right way up' : clip?.upsideDown ? 'Looks upside down' : '';
+  renderOverlayPreview();
 }
 
 function renderClipList(): void {
@@ -330,9 +717,9 @@ function renderClipList(): void {
     name.title = c.name;
     const state = document.createElement('span');
     const r = sessionResults.get(c.path);
-    state.className = `clip-state ${r ? (r.confident ? 'good' : 'warn') : ''}`;
-    const label = r?.basis === 'set by hand' ? 'by hand' : r?.basis === 'clock from other clips' ? 'from day clock' : r?.confident ? 'synced' : 'check';
-    state.textContent = r ? label : clockText(c.duration);
+    const estimated = r?.basis === 'clock from other clips';
+    state.className = `clip-state ${r ? (estimated || !r.confident ? 'warn' : r.basis === 'set by hand' ? '' : 'good') : ''}`;
+    state.textContent = r ? (r.confident ? CLIP_LABELS[r.basis] : 'Check') : clockText(c.duration);
     button.append(name, state);
     if (c.path === clip?.path) button.setAttribute('aria-current', 'true');
     button.addEventListener('click', () => { void selectClip(c.path); });
@@ -340,6 +727,12 @@ function renderClipList(): void {
     return item;
   });
   $('clip-list').replaceChildren(...items);
+
+  const all = [...sessionResults.values()];
+  const count = (basis: SessionResult['basis'][]) => all.filter(r => basis.includes(r.basis)).length;
+  $('clip-summary').textContent = all.length
+    ? `${count(['own motion', 'guided by other clips'])} matched, ${count(['clock from other clips'])} estimated, ${count(['set by hand'])} by hand. Fixing a clip changes that clip only.`
+    : track ? 'Not synced with this GPS source yet. Press Auto-sync all clips.' : '';
 }
 
 async function selectClip(path: string): Promise<void> {
@@ -357,7 +750,8 @@ async function openFolder(dir: string): Promise<void> {
     const found = await api.scanFolder(dir);
     folderClips = found.clips;
     folderTracks = found.tracks;
-    sessionResults.clear();
+    sessions.clear();
+    autoStarts.clear();
     if (folderTracks.length === 0) {
       setStatus('No FIT or SRT tracks found in that folder.');
       return;
@@ -370,7 +764,7 @@ async function openFolder(dir: string): Promise<void> {
       option.textContent = `${t.device}, ${day}, ${t.clips} clips`;
       return option;
     }));
-    select.hidden = false;
+    $('track-picker').hidden = false;
     $('open-track').hidden = true;
     $('track-name').hidden = true;
     $('clip-panel').hidden = false;
@@ -402,6 +796,12 @@ async function loadTrack(path: string): Promise<void> {
   track = await api.loadTrack(path);
   const { columns } = track;
   $('track-name').textContent = track.name;
+  $<HTMLSelectElement>('track-select').value = path;
+  sessionResults = sessions.get(path) ?? new Map();
+  sessions.set(path, sessionResults);
+  overlayData = prepareOverlayData(columns, template.gradientSpan);
+  clipStart = null;
+  confident = false;
   const points = columns.t.map((_, i) => [columns.lat[i], columns.lon[i]] as L.LatLngTuple);
   line.setLatLngs(points);
   map.invalidateSize();
@@ -411,8 +811,10 @@ async function loadTrack(path: string): Promise<void> {
   trackTime = columns.t[0];
   placeTrackAtClipClock();
   renderTrackPosition();
-  applySaved();
-  renderSyncState();
+  const held = clip && sessionResults.get(clip.path);
+  if (held) applySessionResult(held);
+  else applySaved();
+  renderSyncState(clipStart != null ? $('sync-detail').textContent ?? undefined : undefined);
   setStatus('');
 }
 
@@ -436,6 +838,7 @@ function applySaved(): void {
 async function loadClip(path: string): Promise<void> {
   setStatus('Preparing video');
   const loaded = await api.loadClip(path);
+  const keepPlaying = !video.paused;
   clip = loaded;
   clipStart = null;
   confident = false;
@@ -443,6 +846,7 @@ async function loadClip(path: string): Promise<void> {
   $('clip-name').textContent = loaded.name;
   $('video-empty').hidden = true;
   video.src = loaded.url;
+  if (keepPlaying) void video.play();
   videoScrub.max = String(loaded.duration);
   videoScrub.disabled = false;
   renderRotation();
@@ -451,7 +855,7 @@ async function loadClip(path: string): Promise<void> {
   renderTrackPosition();
   const fromDay = sessionResults.get(loaded.path);
   if (fromDay) applySessionResult(fromDay);
-  applySaved();
+  else applySaved();
   renderSyncState(clipStart != null ? $('sync-detail').textContent ?? undefined : undefined);
   setStatus(loaded.proxyMethod === 'cached' ? '' : `Preview built in ${loaded.proxySeconds.toFixed(0)} s (${loaded.proxyMethod})`);
 }
@@ -472,9 +876,28 @@ $('open-folder').addEventListener('click', async () => {
   if (dir) await openFolder(dir);
 });
 $<HTMLSelectElement>('track-select').addEventListener('change', async event => {
-  sessionResults.clear();
   await loadTrack((event.target as HTMLSelectElement).value);
   renderClipList();
+});
+$('apply-shift').addEventListener('click', applyShiftToEstimated);
+$('show-dials').addEventListener('change', renderOverlayPreview);
+$('generate').addEventListener('click', () => { void generateOverlays(); });
+video.addEventListener('loadedmetadata', () => { renderOverlayPreview(); });
+video.addEventListener('seeked', renderOverlayPreview);
+$('map-settings').addEventListener('click', async () => {
+  $<HTMLInputElement>('mapbox-token').value = await api.getMapToken();
+  $('settings-error').textContent = '';
+  $<HTMLDialogElement>('settings-dialog').showModal();
+});
+$('settings-save').addEventListener('click', async event => {
+  event.preventDefault();
+  try {
+    await api.setMapToken($<HTMLInputElement>('mapbox-token').value);
+    await buildMapLayers();
+    $<HTMLDialogElement>('settings-dialog').close();
+  } catch (error) {
+    $('settings-error').textContent = String((error as Error)?.message ?? error).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+  }
 });
 $('rotate').addEventListener('click', () => {
   manualRotation = (manualRotation + 90) % 360;
@@ -494,6 +917,8 @@ $('open-track').addEventListener('click', async () => {
 $('play').addEventListener('click', () => { if (clip) void (video.paused ? video.play() : video.pause()); });
 video.addEventListener('play', () => { $('play').textContent = 'Pause'; });
 video.addEventListener('pause', () => { $('play').textContent = 'Play'; });
+// Loading a new clip stops playback without firing `pause`.
+video.addEventListener('emptied', () => { $('play').textContent = video.paused ? 'Play' : 'Pause'; });
 video.addEventListener('seeked', renderVideoPosition);
 
 videoScrub.addEventListener('input', () => { draggingVideo = true; seekVideo(Number(videoScrub.value)); });
@@ -533,7 +958,11 @@ $('save').addEventListener('click', async () => {
 });
 
 document.addEventListener('keydown', event => {
-  if (event.target instanceof HTMLButtonElement) return;
+  if (mode === 'design' && editor.keydown(event)) {
+    event.preventDefault();
+    return;
+  }
+  if (event.target instanceof HTMLButtonElement || /^(INPUT|SELECT)$/.test((event.target as HTMLElement).tagName)) return;
   if (event.code === 'Space') {
     event.preventDefault();
     $('play').click();
@@ -559,15 +988,41 @@ document.addEventListener('drop', event => {
 
 api.onProxyProgress(fraction => setStatus(`Preparing video ${(fraction * 100).toFixed(0)}%`));
 api.onSyncProgress((done, total) => setStatus(`Matching clip ${done} of ${total}`));
+api.onOverlayProgress(progress => {
+  exportProgress.set(progress.clip, progress);
+  reportExport();
+});
 window.app = {
   loadPaths,
   openFolder,
   selectClip,
+  generate: generateOverlays,
+  setMode,
+  template: () => template,
+  importLayoutFile: async path => bringInLayout(await api.importLayoutPath(path)),
+  selectWidget: id => editor.select(id),
   state: () => ({ clipStart, method, confident, trackTime, videoTime: video.currentTime, readyState: video.readyState, videoWidth: video.videoWidth, videoError: video.error?.message ?? null, rotation: rotation(), upsideDown: clip?.upsideDown, fileRotation: clip?.fileRotation }),
 };
 window.addEventListener('resize', () => {
   map.invalidateSize();
   renderRotation();
+  editor.renderSelection();
 });
+for (const name of ['sync', 'design', 'compare'] as Mode[]) {
+  $(`tab-${name}`).addEventListener('click', () => setMode(name));
+}
+wireLayoutTools();
+void refreshLayouts();
+void api.loadWorkingCopy().then(saved => {
+  if (!saved) return;
+  template = normaliseTemplate(saved);
+  editor.replace(template);
+});
+void buildMapLayers();
+// Canvas text won't load a web font by itself, and would draw the first dials in a fallback.
+void Promise.all([
+  document.fonts.load(`italic 700 40px ${DISPLAY_FONT}`),
+  document.fonts.load(`600 40px ${DISPLAY_FONT}`),
+]).then(renderOverlayPreview);
 renderSyncState();
 requestAnimationFrame(tick);

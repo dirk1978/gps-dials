@@ -1,17 +1,26 @@
 import { execFileSync } from 'node:child_process';
-import { createReadStream, existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { Readable } from 'node:stream';
-import { BrowserWindow, app, dialog, ipcMain, protocol, session, utilityProcess } from 'electron';
+import { BrowserWindow, app, dialog, ipcMain, protocol, safeStorage, session, utilityProcess } from 'electron';
+import { COMBINED_EXTENSION, writeCombined } from '../activity/combined.ts';
+import { toColumns } from '../activity/columns.ts';
 import { readActivity } from '../activity/index.ts';
 import { clipClockTime } from '../sync/engine.ts';
 import { displayRotation, isUpsideDown } from '../sync/orientation.ts';
-import type { TrackColumns } from '../sync/timeline.ts';
+import {
+  altitudeProfiles, checkAgainstTerrain, combineSources, compareSources, summarise, terrainAscent, terrainSamples, type Choices, type Source,
+} from '../compare/compare.ts';
+import { TERRAIN_CREDIT, fetchTerrain } from '../compare/terrain.ts';
+import type { Template } from '../overlay/template.ts';
 import { scanFolder } from './folder.ts';
+import { deleteLayout, importLayout, listLayouts, loadLayout, loadWorkingCopy, saveLayout, saveWorkingCopy } from './layouts.ts';
+import { cancelOverlays, renderBatch, type OverlayBatch } from './overlay-queue.ts';
 import { ensureProxy } from './proxy.ts';
 
 const MEDIA_SCHEME = 'gpsdials-media';
 const TILE_HOST = 'tile.openstreetmap.org';
+const TERRAIN_SPACING_M = 200;
 const PROJECT_URL = 'https://github.com/dirk1978/gps-dials';
 
 protocol.registerSchemesAsPrivileged([{ scheme: MEDIA_SCHEME, privileges: { stream: true, supportFetchAPI: true, standard: true, secure: true } }]);
@@ -44,8 +53,26 @@ function probe(clip: string): { duration: number; fps: number } {
 }
 
 const sidecarPath = (clip: string) => `${clip}.gpsdials.json`;
+const tokenPath = () => join(app.getPath('userData'), 'mapbox-token.bin');
+
+function readMapToken(): string {
+  if (!existsSync(tokenPath()) || !safeStorage.isEncryptionAvailable()) return '';
+  return safeStorage.decryptString(readFileSync(tokenPath()));
+}
+
+function saveMapToken(token: string): void {
+  if (!token) {
+    rmSync(tokenPath(), { force: true });
+    return;
+  }
+  if (!safeStorage.isEncryptionAvailable()) throw new Error('This PC can\'t store the token securely, so it wasn\'t saved.');
+  writeFileSync(tokenPath(), safeStorage.encryptString(token));
+}
 
 function registerIpc(): void {
+  ipcMain.handle('get-map-token', readMapToken);
+  ipcMain.handle('set-map-token', (_event, token: string) => saveMapToken(token.trim()));
+
   ipcMain.handle('pick-file', async (_event, kind: 'clip' | 'track') => {
     const filters = kind === 'clip'
       ? [{ name: 'Video', extensions: ['mp4', 'mov', 'insv'] }]
@@ -57,15 +84,7 @@ function registerIpc(): void {
   ipcMain.handle('load-track', (_event, path: string) => {
     const points = readActivity(path);
     if (points.length < 2) throw new Error('That file has no usable GPS track.');
-    const columns: TrackColumns = {
-      t: points.map(p => p.t),
-      lat: points.map(p => p.lat),
-      lon: points.map(p => p.lon),
-      speed: points.map(p => p.speed ?? null),
-      heartRate: points.map(p => p.heartRate ?? null),
-      altitude: points.map(p => p.altitude ?? null),
-    };
-    return { path, name: basename(path), columns };
+    return { path, name: basename(path), columns: toColumns(points) };
   });
 
   ipcMain.handle('load-clip', async (event, clip: string) => {
@@ -91,6 +110,70 @@ function registerIpc(): void {
       saved,
     };
   });
+
+  const readSources = (items: { path: string; name: string }[]): Source[] => items.map(i => ({ name: i.name, points: readActivity(i.path) }));
+
+  ipcMain.handle('compare-sources', (_event, items: { path: string; name: string }[]) => {
+    const sources = readSources(items);
+    const pairs = sources.slice(1).map(s => compareSources(sources[0], s));
+    const lags = [0, ...pairs.map(p => p.clockOffset)];
+    return { summaries: sources.map(summarise), pairs, profile: altitudeProfiles(sources, lags) };
+  });
+
+  // Sends coordinates to an outside service, so this only ever runs from its own button.
+  ipcMain.handle('check-terrain', async (_event, items: { path: string; name: string }[]) => {
+    const sources = readSources(items);
+    const lags = [0, ...sources.slice(1).map(s => compareSources(sources[0], s).clockOffset)];
+    const terrain = await fetchTerrain(terrainSamples(sources[0], TERRAIN_SPACING_M));
+    return {
+      credit: TERRAIN_CREDIT,
+      points: terrain.length,
+      terrainAscent: terrainAscent(terrain),
+      checks: sources.map((s, i) => checkAgainstTerrain(s, terrain, lags[i])),
+      profile: terrain.map(p => ({ t: p.t, elevation: p.elevation })),
+    };
+  });
+
+  ipcMain.handle('combine-sources', (_event, items: { path: string; name: string }[], choices: Choices, name: string) => {
+    const sources = readSources(items);
+    const lags = [0, ...sources.slice(1).map(s => compareSources(sources[0], s).clockOffset)];
+    const points = combineSources(sources, lags, choices);
+    const dir = join(app.getPath('userData'), 'combined');
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, `${sources[0].points[0].t}-${name.replace(/[^\p{L}\p{N} _-]/gu, '')}${COMBINED_EXTENSION}`);
+    writeCombined(path, points);
+    return { path, points: points.length, start: points[0].t, end: points.at(-1)!.t };
+  });
+
+  const layoutsDir = () => join(app.getPath('userData'), 'layouts');
+  ipcMain.handle('list-layouts', () => listLayouts(layoutsDir()));
+  ipcMain.handle('load-layout', (_event, name: string) => loadLayout(layoutsDir(), name));
+  ipcMain.handle('save-layout', (_event, name: string, template: Template) => saveLayout(layoutsDir(), name, template));
+  ipcMain.handle('delete-layout', (_event, name: string) => deleteLayout(layoutsDir(), name));
+  ipcMain.handle('load-working-copy', () => loadWorkingCopy(layoutsDir()));
+  ipcMain.handle('save-working-copy', (_event, template: Template) => saveWorkingCopy(layoutsDir(), template));
+  ipcMain.handle('import-layout', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(window, {
+      properties: ['openFile'],
+      filters: [{ name: 'Layouts and Telemetry Overlay templates', extensions: ['json', 'toptrn', 'toproj'] }],
+    });
+    return canceled ? null : importLayout(filePaths[0]);
+  });
+  ipcMain.handle('import-layout-path', (_event, path: string) => importLayout(path));
+  ipcMain.handle('export-layout', async (_event, template: Template) => {
+    const { canceled, filePath } = await dialog.showSaveDialog(window, {
+      defaultPath: `${template.name}.layout.json`,
+      filters: [{ name: 'gps-dials layout', extensions: ['json'] }],
+    });
+    if (canceled || !filePath) return null;
+    writeFileSync(filePath, JSON.stringify(template, null, 2));
+    return filePath;
+  });
+
+  ipcMain.handle('export-overlays', (event, batch: OverlayBatch) => (
+    renderBatch(join(__dirname, 'overlay-worker.cjs'), batch, progress => event.sender.send('overlay-progress', progress))
+  ));
+  ipcMain.handle('cancel-overlays', () => cancelOverlays());
 
   ipcMain.handle('pick-folder', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog(window, { properties: ['openDirectory'] });

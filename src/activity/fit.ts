@@ -20,6 +20,7 @@ const FIT_EPOCH_UNIX = 631065600;
 const SEMICIRCLES_TO_DEGREES = 180 / 2 ** 31;
 
 const BASE_SINT32 = 0x85;
+const BASE_SINT8 = 0x01;
 
 /** Reads an unsigned value of 1, 2 or 4 bytes, or undefined for FIT's "invalid" marker. */
 function readUnsigned(b: Uint8Array, view: DataView, pos: number, size: number, le: boolean): number | undefined {
@@ -112,7 +113,8 @@ export function parseFitActivity(bytes: Uint8Array): FitActivity {
         if (ts != null) lastTimestamp = ts;
       } else if (def.global === RECORD_MESSAGE) {
         const signed = f.baseType === BASE_SINT32 && f.size === 4;
-        values.set(f.no, signed ? readSint32(view, p, le) : readUnsigned(bytes, view, p, f.size, le));
+        if (f.baseType === BASE_SINT8 && f.size === 1) values.set(f.no, bytes[p] === 0x7f ? undefined : view.getInt8(p));
+        else values.set(f.no, signed ? readSint32(view, p, le) : readUnsigned(bytes, view, p, f.size, le));
       } else if (def.global === FILE_ID_MESSAGE && f.no === 1 && f.size === 2) {
         device = MANUFACTURERS[view.getUint16(p, le)];
       }
@@ -133,6 +135,9 @@ export function parseFitActivity(bytes: Uint8Array): FitActivity {
       speed: speed != null ? speed / 1000 : undefined,
       heartRate: values.get(3),
       altitude: altitude != null ? altitude / 5 - 500 : undefined,
+      cadence: values.get(4),
+      power: values.get(7),
+      temperature: values.get(13),
     });
   }
   return { points, device };

@@ -2,32 +2,75 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; media-src gpsdials-media:; style-src 'self' 'unsafe-inline'; connect-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https://tile.openstreetmap.org https://server.arcgisonline.com https://api.mapbox.com; media-src gpsdials-media:; style-src 'self' 'unsafe-inline'; connect-src 'none'">
   <title>gps-dials</title>
   <link rel="stylesheet" href="renderer.css">
 </head>
 <body>
   <header>
-    <strong class="brand">gps-dials</strong>
+    <strong class="brand">GPS<span>Dials</span></strong>
+    <nav class="tabs" aria-label="Mode">
+      <button id="tab-sync" class="tab" aria-pressed="true">Sync</button>
+      <button id="tab-design" class="tab" aria-pressed="false">Design</button>
+      <button id="tab-compare" class="tab" aria-pressed="false">Compare sources</button>
+    </nav>
     <button id="open-folder" class="primary">Open folder</button>
     <button id="open-clip">Open video</button>
     <span id="clip-name" class="file">No video</span>
     <button id="open-track">Open track</button>
     <span id="track-name" class="file">No FIT or SRT</span>
-    <select id="track-select" aria-label="Track" hidden></select>
+    <label id="track-picker" class="picker" hidden title="The GPS recording used for the map, speed and heart rate. Each source keeps its own sync, so you can switch and compare.">
+      GPS source
+      <select id="track-select"></select>
+    </label>
     <span class="grow"></span>
     <span id="status" role="status"></span>
+    <button id="map-settings">Map settings</button>
   </header>
 
   <main>
     <aside id="clip-panel" hidden>
       <h2 id="clip-count">Clips</h2>
+      <p id="clip-summary"></p>
       <ul id="clip-list"></ul>
+      <dl class="legend">
+        <dt class="good">Matched</dt><dd>Lined up using this clip's own movement.</dd>
+        <dt class="warn">Estimated</dt><dd>Too few turns to match, so it uses the camera clock error from nearby matched clips. Check these first.</dd>
+        <dt>By hand</dt><dd>You set it. Auto-sync won't overwrite it.</dd>
+      </dl>
     </aside>
 
-    <section class="pane">
+    <aside id="layers-panel" hidden>
+      <h2>Layout</h2>
+      <div class="layout-tools">
+        <select id="layout-select" aria-label="Saved layouts"></select>
+        <div class="button-row">
+          <button id="layout-save" title="Save as a named layout">Save as</button>
+          <button id="layout-delete" title="Delete the chosen layout">Delete</button>
+          <button id="layout-import" title="Open a layout, or a Telemetry Overlay template">Import</button>
+          <button id="layout-export" title="Save this layout to a file you can share">Export</button>
+          <button id="layout-reset" title="Go back to the built-in layout">Reset</button>
+        </div>
+      </div>
+      <h2>Add</h2>
+      <div class="add-tools">
+        <select id="add-channel" aria-label="Data to add"></select>
+        <select id="add-display" aria-label="How to show it"></select>
+        <button id="add-widget" class="primary">Add to picture</button>
+      </div>
+      <h2>Layers</h2>
+      <ul id="layer-list"></ul>
+      <div class="button-row undo-tools">
+        <button id="undo" title="Undo (Ctrl+Z)">Undo</button>
+        <button id="redo" title="Redo (Ctrl+Y)">Redo</button>
+      </div>
+    </aside>
+
+    <section class="pane" id="video-pane">
       <div class="stage" id="video-stage">
         <video id="video" preload="auto"></video>
+        <canvas id="overlay" aria-label="Overlay preview"></canvas>
+        <div id="editor-layer"></div>
         <div id="video-empty" class="empty">Drop a video and a FIT file here</div>
       </div>
       <div class="controls">
@@ -40,11 +83,19 @@
         <button data-frames="1" title="Forward one frame (.)">Frame &#9654;</button>
         <button id="rotate" title="Turn the picture 90 degrees">Rotate</button>
         <label class="check"><input id="auto-rotate" type="checkbox" checked> Auto-correct upside-down</label>
+        <label class="check"><input id="show-dials" type="checkbox" checked> Show dials</label>
         <span id="rotate-note" class="note"></span>
       </div>
     </section>
 
-    <section class="pane">
+    <aside id="inspector" hidden>
+      <h2 id="inspector-title">Theme</h2>
+      <div id="inspector-body"></div>
+    </aside>
+
+    <section id="compare-pane" class="compare" hidden></section>
+
+    <section class="pane" id="map-pane">
       <div class="stage">
         <div id="map"></div>
         <div id="map-note" class="map-note" hidden></div>
@@ -75,10 +126,44 @@
       <button data-nudge="0.1">+0.1 s</button>
       <button data-nudge="1">+1 s</button>
     </span>
+    <button id="apply-shift" hidden></button>
     <button id="auto-sync" disabled>Auto-sync</button>
-    <button id="lock" class="primary" disabled>Match these two points</button>
+    <button id="lock" disabled>Match these two points</button>
     <button id="save" disabled>Save</button>
+    <span class="grow"></span>
+    <select id="overlay-format" aria-label="Overlay format" title="Transparent is for editors with alpha support, and takes about 0.5 GB a minute at 4K. Green screen files are tiny, and you key out the green in your editor.">
+      <option value="prores-alpha">Transparent (ProRes 4444)</option>
+      <option value="chroma-h264">Green screen (H.264)</option>
+    </select>
+    <button id="generate" class="primary" disabled>Generate overlays</button>
   </footer>
+
+  <dialog id="layout-dialog">
+    <form method="dialog">
+      <h2>Save layout</h2>
+      <label for="layout-name">Name</label>
+      <input id="layout-name" type="text" autocomplete="off" maxlength="60">
+      <div class="dialog-buttons" style="margin-top: 12px">
+        <button value="cancel">Cancel</button>
+        <button id="layout-confirm" class="primary" value="save">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="settings-dialog">
+    <form method="dialog">
+      <h2>Map settings</h2>
+      <p>Street, Satellite and Hybrid work without a key. They are for lining up clips here, not for baking into videos.</p>
+      <label for="mapbox-token">Mapbox access token (optional)</label>
+      <input id="mapbox-token" type="password" autocomplete="off" spellcheck="false" placeholder="pk...">
+      <p class="hint">Adds Mapbox Satellite and Hybrid layers. It is stored encrypted on this PC and sent only to Mapbox.</p>
+      <p id="settings-error" class="note"></p>
+      <div class="dialog-buttons">
+        <button value="cancel">Cancel</button>
+        <button id="settings-save" class="primary" value="save">Save</button>
+      </div>
+    </form>
+  </dialog>
 
   <script src="renderer.js"></script>
 </body>

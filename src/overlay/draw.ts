@@ -1,0 +1,64 @@
+import { channelDef, formatValue, readChannel, unitDef } from './channels.ts';
+import type { OverlayData } from './data.ts';
+import { displayDef } from './displays/index.ts';
+import type { Ctx, DrawEnv } from './displays/common.ts';
+import { resolveStyle, type Template, type Widget } from './template.ts';
+
+export type { Ctx } from './displays/common.ts';
+export const DISPLAY_FONT = '"Barlow Condensed"';
+
+export interface FrameContext {
+  width: number;
+  height: number;
+  template: Template;
+  data: OverlayData;
+  /** Clip start and end on the track's clock. */
+  clipStart: number;
+  clipEnd: number;
+}
+
+function drawWidget(ctx: Ctx, widget: Widget, frame: FrameContext, time: number): void {
+  const { width, height, template, data, clipStart, clipEnd } = frame;
+  const unit = width / 1920;
+  const style = resolveStyle(widget, template.theme);
+  const channel = channelDef(widget.channel);
+  const unitInfo = unitDef(channel, style.unit);
+  const clip = { clipStart };
+  const value = readChannel(data, channel, style.unit, time, clip, style.smoothing);
+
+  const env: DrawEnv = {
+    ctx,
+    box: { x: widget.x * width, y: widget.y * height, w: widget.width * width, h: widget.height * height },
+    widget,
+    style,
+    channel,
+    data,
+    value,
+    valueText: formatValue(channel, value, style.decimals, style.showSign),
+    unitLabel: unitInfo.label,
+    time,
+    clipStart,
+    clipEnd,
+    unit,
+    upColor: template.theme.up,
+    downColor: template.theme.down,
+    valueAt: t => readChannel(data, channel, style.unit, t, clip, style.smoothing),
+  };
+
+  ctx.save();
+  ctx.globalAlpha = style.opacity;
+  if (style.shadow > 0) {
+    ctx.shadowColor = style.shadowColor;
+    ctx.shadowBlur = style.shadow * unit;
+    ctx.shadowOffsetY = unit;
+  }
+  displayDef(widget.display).draw(env);
+  ctx.restore();
+}
+
+/** Draws every visible widget for one moment. The canvas stays transparent everywhere else. */
+export function drawFrame(ctx: Ctx, frame: FrameContext, time: number): void {
+  for (const widget of frame.template.widgets) {
+    if (!widget.hidden) drawWidget(ctx, widget, frame, time);
+  }
+}

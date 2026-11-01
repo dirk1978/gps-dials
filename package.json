@@ -14,9 +14,12 @@
     "app": "node scripts/build.mjs && electron .",
     "build": "node scripts/build.mjs",
     "sync": "node src/sync/cli.ts",
+    "overlay": "node src/overlay/cli.ts",
     "test": "node --test \"src/**/*.test.ts\""
   },
   "dependencies": {
+    "@fontsource/barlow-condensed": "^5.3.0",
+    "@napi-rs/canvas": "^1.1.0",
     "leaflet": "^1.9.4"
   },
   "devDependencies": {

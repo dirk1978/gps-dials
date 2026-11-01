@@ -1,4 +1,5 @@
 import { extname } from 'node:path';
+import { COMBINED_EXTENSION, readCombined } from './combined.ts';
 import { readDjiSrt } from './dji-srt.ts';
 import { readFit } from './fit.ts';
 import type { ActivityFormat, TrackPoint } from './types.ts';
@@ -6,6 +7,7 @@ import type { ActivityFormat, TrackPoint } from './types.ts';
 export const activityFormats: ActivityFormat[] = [
   { name: 'FIT', extensions: ['.fit'], read: readFit },
   { name: 'DJI subtitle track', extensions: ['.srt'], read: readDjiSrt },
+  { name: 'Combined track', extensions: [COMBINED_EXTENSION], read: readCombined },
 ];
 
 export function readActivity(path: string): TrackPoint[] {

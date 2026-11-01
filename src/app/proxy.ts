@@ -32,6 +32,20 @@ const ATTEMPTS: Attempt[] = [
     args: input => ['-hwaccel', 'cuda', ...RAW_PIXELS, '-i', input, '-vf', `scale=-2:${HEIGHT},format=yuv420p`, ...ENCODE, ...AUDIO_AND_OUTPUT],
   },
   {
+    name: 'Intel GPU',
+    args: input => [
+      '-hwaccel', 'auto', ...RAW_PIXELS, '-i', input, '-vf', `scale=-2:${HEIGHT},format=yuv420p`,
+      '-c:v', 'h264_qsv', '-preset', 'veryfast', '-global_quality', '30', '-g', String(KEYFRAME_INTERVAL), ...AUDIO_AND_OUTPUT,
+    ],
+  },
+  {
+    name: 'AMD GPU',
+    args: input => [
+      '-hwaccel', 'auto', ...RAW_PIXELS, '-i', input, '-vf', `scale=-2:${HEIGHT},format=yuv420p`,
+      '-c:v', 'h264_amf', '-quality', 'speed', '-rc', 'cqp', '-qp_i', '30', '-qp_p', '30', '-g', String(KEYFRAME_INTERVAL), ...AUDIO_AND_OUTPUT,
+    ],
+  },
+  {
     name: 'CPU',
     args: input => [
       ...RAW_PIXELS, '-i', input, '-vf', `scale=-2:${HEIGHT},format=yuv420p`,

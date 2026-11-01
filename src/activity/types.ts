@@ -7,6 +7,12 @@ export interface TrackPoint {
   speed?: number;
   heartRate?: number;
   altitude?: number;
+  /** Revolutions or steps a minute, as the device reports it. */
+  cadence?: number;
+  /** Watts. */
+  power?: number;
+  /** Degrees Celsius. */
+  temperature?: number;
 }
 
 /**
