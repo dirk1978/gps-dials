@@ -27,7 +27,7 @@ function drawWidget(ctx: Ctx, widget: Widget, frame: FrameContext, time: number)
   const display = displayDef(widget.display);
   if (style.hideWhenNoData && !display.usesTrack && !data.available.has(widget.channel)) return;
   const unitInfo = unitDef(channel, style.unit);
-  const clip = { clipStart };
+  const clip = { clipStart, rider: template.rider };
   const value = readChannel(data, channel, style.unit, time, clip, style.smoothing);
 
   const env: DrawEnv = {

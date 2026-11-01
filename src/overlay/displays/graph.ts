@@ -1,11 +1,12 @@
+import { seriesValue, timeAtDistance } from '../data.ts';
 import { autoRange, drawPanel, drawText, fraction, rgba, setFont, spacedLabel, valueColor, type DisplayDef } from './common.ts';
 
 const SAMPLES = 240;
 
-/** A value over time: the last stretch up to now, with the current reading marked at the end. */
+/** A value over the last stretch of time or distance, with the current reading marked at the end. */
 export const graph: DisplayDef = {
   id: 'graph',
-  label: 'Graph over time',
+  label: 'Graph',
   draw(env) {
     const { ctx, box, time, valueAt, valueText, unitLabel, unit } = env;
     const style = autoRange(env.style, env);
@@ -16,8 +17,12 @@ export const graph: DisplayDef = {
 
     const points: [number, number][] = [];
     const readings: number[] = [];
+    const here = seriesValue(env.data, 'distance', time) ?? 0;
     for (let i = 0; i <= SAMPLES; i++) {
-      const v = valueAt(time - style.windowSeconds * (1 - i / SAMPLES));
+      const back = 1 - i / SAMPLES;
+      const metres = here - style.windowMetres * back;
+      if (style.graphAxis === 'distance' && metres < 0) continue;
+      const v = valueAt(style.graphAxis === 'distance' ? timeAtDistance(env.data, metres) : time - style.windowSeconds * back);
       if (v == null) continue;
       points.push([plot.x + (i / SAMPLES) * plot.w, plot.y + plot.h * (1 - fraction(style, v))]);
       readings.push(v);

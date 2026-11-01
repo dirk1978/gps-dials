@@ -35,6 +35,9 @@ const proxies = new Map<string, string>();
 /** Whether the open project has changes that aren't saved. */
 let dirty = false;
 
+/** Ends the auto-sync in progress, leaving whatever was synced before it. */
+let stopSync: (() => void) | null = null;
+
 const UNSAVED_CHOICES = ['save', 'discard', 'cancel'] as const;
 const UNSAVED_PROMPT = {
   type: 'question' as const,
@@ -213,9 +216,17 @@ function registerIpc(): void {
       else if (message.ok) resolve(message.result);
       else reject(new Error(message.error));
     });
-    worker.once('exit', code => { if (code !== 0) reject(new Error(`Sync stopped unexpectedly (${code}).`)); });
+    worker.once('exit', code => {
+      stopSync = null;
+      if (code !== 0) reject(new Error(`Sync stopped unexpectedly (${code}).`));
+    });
+    stopSync = () => {
+      resolve(null);
+      worker.kill();
+    };
     worker.postMessage(job);
   }));
+  ipcMain.handle('cancel-sync', () => stopSync?.());
 
   ipcMain.handle('project-pick-save', async (_event, name: string) => {
     const { canceled, filePath } = await dialog.showSaveDialog(window, {

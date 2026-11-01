@@ -3,7 +3,7 @@ import { DEFAULT_RIDER, defaultZones, type Rider, type Zone } from './zones.ts';
 
 export type { Zone } from './zones.ts';
 
-export type DisplayId = 'dial' | 'arc' | 'bar' | 'graph' | 'counter' | 'text' | 'route' | 'profile' | 'map';
+export type DisplayId = 'dial' | 'arc' | 'vsi' | 'compass' | 'tape' | 'tilt' | 'horizon' | 'scope' | 'bar' | 'zones' | 'graph' | 'counter' | 'stats' | 'text' | 'route' | 'profile' | 'map' | 'image';
 
 /** The look shared across a layout. Changing the theme recolours everything not set by hand. */
 export interface Theme {
@@ -86,7 +86,21 @@ export interface Style {
   showHub: boolean;
 
   orientation: 'horizontal' | 'vertical';
+  compassMode: 'card' | 'needle';
+  /** How many numbered steps a tape shows at once. */
+  tapeSteps: number;
+  skyColor: string;
+  groundColor: string;
+  /** The g-force at a scope's rim. */
+  scopeRange: number;
+  trailSeconds: number;
+  statsSpan: 'clip' | 'soFar';
+  /** Pictures for a home-made gauge, kept in the layout so it travels with it. */
+  imageDial: string;
+  imageNeedle: string;
 
+  graphAxis: 'time' | 'distance';
+  windowMetres: number;
   windowSeconds: number;
   fillArea: boolean;
   lineWidth: number;
@@ -135,6 +149,14 @@ export interface Widget {
   hidden?: boolean;
   /** Only what differs from the defaults. */
   style: Partial<Style>;
+  /** For built-in layouts: what to show here instead, best first, if the file has no data for this. */
+  instead?: Swap[];
+}
+
+export interface Swap {
+  channel: ChannelId;
+  display: DisplayId;
+  style?: Partial<Style>;
 }
 
 export interface Template {
@@ -180,6 +202,9 @@ const BASE_STYLE: Style = {
   autoRange: false, min: NaN, max: NaN, step: NaN, minorTicks: 0, showTicks: true, showNumbers: true, tickLength: 0.1, tickWidth: 0.016,
   thickness: 0.085, roundEnds: false, startAngle: 135, sweepAngle: 270, reverse: false, showNeedle: true, needleLength: 0.74, needleWidth: 0.04, showHub: true,
   orientation: 'horizontal',
+  compassMode: 'card',
+  tapeSteps: 4, skyColor: '#3f7fc4', groundColor: '#7a5533', scopeRange: 0.6, trailSeconds: 4, statsSpan: 'soFar', imageDial: '', imageNeedle: '',
+  graphAxis: 'time', windowMetres: 2000,
   windowSeconds: 60, fillArea: true, lineWidth: 3, showMarker: true,
   useZones: false, zones: [], hideWhenNoData: true,
   routeWidth: 5, routeOutlineColor: '#000000', routeOutlineWidth: 1.5, dotSize: 8, markerStyle: 'dot', markerColor: '', showRemaining: true, zoomToClip: false, fullRide: true, profileSmoothing: 40,
@@ -227,7 +252,8 @@ export function newId(): string {
 }
 
 const DEFAULT_SIZES: Record<DisplayId, [number, number]> = {
-  dial: [0.15, 0.2667], arc: [0.15, 0.2667], bar: [0.25, 0.08], graph: [0.34, 0.18], counter: [0.11, 0.11], text: [0.24, 0.08], route: [0.2, 0.3556], profile: [0.5, 0.11], map: [0.2, 0.3556],
+  dial: [0.15, 0.2667], arc: [0.15, 0.2667], vsi: [0.15, 0.2667], compass: [0.15, 0.2667], tape: [0.3, 0.1], tilt: [0.15, 0.17], horizon: [0.15, 0.2667], scope: [0.15, 0.2667],
+  zones: [0.22, 0.1], stats: [0.22, 0.12], image: [0.15, 0.2667], bar: [0.25, 0.08], graph: [0.34, 0.18], counter: [0.11, 0.11], text: [0.24, 0.08], route: [0.2, 0.3556], profile: [0.5, 0.11], map: [0.2, 0.3556],
 };
 
 export function newWidget(channel: ChannelId, display: DisplayId, x = 0.4, y = 0.4): Widget {

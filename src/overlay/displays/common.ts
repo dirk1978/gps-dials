@@ -1,4 +1,4 @@
-import type { ChannelDef } from '../channels.ts';
+import type { ChannelDef, ChannelId } from '../channels.ts';
 import type { OverlayData } from '../data.ts';
 import type { Style, Widget } from '../template.ts';
 
@@ -47,6 +47,8 @@ export interface DisplayDef {
   label: string;
   /** Draws a whole track rather than one number, so it ignores the channel's value. */
   usesTrack?: boolean;
+  /** The data it was made for, chosen for you when you pick this display. */
+  prefers?: ChannelId;
   draw(env: DrawEnv): void;
 }
 

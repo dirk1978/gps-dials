@@ -1,11 +1,18 @@
 import { autoRange, drawText, fraction, rgba, setFont, spacedLabel, valueColor, type DisplayDef, type DrawEnv } from './common.ts';
 
 const ZONE_TRACK_OPACITY = 0.38;
+const MAX_VALUE_WIDTH = 0.6;
 const toRad = (degrees: number) => (degrees * Math.PI) / 180;
 
-function drawGauge(env: DrawEnv, needle: boolean): void {
+function drawGauge(env: DrawEnv, needle: boolean, centred = false): void {
   const { ctx, box, value, valueText, unitLabel } = env;
   const style = autoRange(env.style, env);
+  if (centred) {
+    // An even scale puts zero at the top, with up and down either side of it.
+    const reach = Math.max(Math.abs(style.min), Math.abs(style.max));
+    style.min = -reach;
+    style.max = reach;
+  }
   const cx = box.x + box.w / 2;
   const cy = box.y + box.h / 2;
   const R = Math.min(box.w, box.h) / 2;
@@ -51,7 +58,8 @@ function drawGauge(env: DrawEnv, needle: boolean): void {
   if (value != null) {
     ctx.strokeStyle = color;
     ctx.beginPath();
-    ctx.arc(cx, cy, band, start, angleOf(value), style.reverse);
+    if (centred) ctx.arc(cx, cy, band, Math.min(angleOf(0), angleOf(value)), Math.max(angleOf(0), angleOf(value)));
+    else ctx.arc(cx, cy, band, start, angleOf(value), style.reverse);
     ctx.stroke();
   }
 
@@ -111,7 +119,11 @@ function drawGauge(env: DrawEnv, needle: boolean): void {
   if (style.showLabel) spacedLabel(env, style.labelText, cx, cy + R * 0.14, R * 0.115 * style.labelSize, style.mutedColor);
   ctx.textAlign = 'center';
   if (style.showValue) {
-    setFont(ctx, style, R * 0.42 * style.valueSize);
+    const size = R * 0.42 * style.valueSize;
+    setFont(ctx, style, size);
+    // Long readings shrink to stay clear of the numbers at the ends of the scale.
+    const width = ctx.measureText(valueText).width;
+    if (width > R * MAX_VALUE_WIDTH) setFont(ctx, style, size * ((R * MAX_VALUE_WIDTH) / width));
     ctx.fillStyle = color;
     drawText(env, valueText, cx, cy + R * 0.44);
   }
@@ -124,3 +136,8 @@ function drawGauge(env: DrawEnv, needle: boolean): void {
 
 export const dial: DisplayDef = { id: 'dial', label: 'Dial', draw: env => drawGauge(env, env.style.showNeedle) };
 export const arc: DisplayDef = { id: 'arc', label: 'Arc (no needle)', draw: env => drawGauge(env, false) };
+export const centreDial: DisplayDef = {
+  id: 'vsi',
+  label: 'Zero-centre dial',
+  draw: env => drawGauge({ ...env, style: { ...env.style } }, env.style.showNeedle, true),
+};

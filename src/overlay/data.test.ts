@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { TrackColumns } from '../sync/timeline.ts';
 import { channelDef, formatValue, readChannel } from './channels.ts';
-import { prepareOverlayData, seriesValue } from './data.ts';
+import { prepareOverlayData, seriesValue, timeAtDistance } from './data.ts';
 
 /** Heading north at about 11 m a point, climbing 1 m per point. */
 const track: TrackColumns = {
@@ -58,6 +58,77 @@ test('blends heading across north the short way', () => {
   data.series.heading[6] = 10;
   const v = seriesValue(data, 'heading', 1005.5)!;
   assert.ok(v < 1 || v > 359, `heading was ${v}`);
+});
+
+test('smooths heading across north, rather than swinging to south', () => {
+  const data = prepareOverlayData(track);
+  data.series.heading = track.t.map((_, i) => (i % 2 ? 359 : 1));
+  const v = seriesValue(data, 'heading', 1010, 6)!;
+  assert.ok(v < 2 || v > 358, `heading was ${v}`);
+});
+
+/** A circle of 50 m radius at 10 m/s, turning right, so cornering is v²/r = 2 m/s². */
+function circle(): TrackColumns {
+  const n = 120;
+  const radius = 50 / 111_320;
+  const t = Array.from({ length: n }, (_, i) => 1000 + i);
+  return {
+    t,
+    lat: t.map((_, i) => 50 + radius * Math.cos(i / 5)),
+    lon: t.map((_, i) => (radius * Math.sin(i / 5)) / Math.cos((50 * Math.PI) / 180)),
+    speed: new Array(n).fill(10),
+    heartRate: new Array(n).fill(null),
+    altitude: new Array(n).fill(100),
+    power: new Array(n).fill(null),
+  };
+}
+
+test('works out cornering force and lean from a turn', () => {
+  const data = prepareOverlayData(circle());
+  const lateral = seriesValue(data, 'accelLateral', 1060)!;
+  assert.ok(Math.abs(lateral - 2) < 0.1, `cornering was ${lateral}`);
+  const lean = seriesValue(data, 'leanAngle', 1060)!;
+  assert.ok(Math.abs(lean - 11.5) < 0.6, `lean was ${lean}`);
+  assert.ok(Math.abs(seriesValue(data, 'accelForward', 1060)!) < 0.01);
+});
+
+test('leans the other way on a left turn', () => {
+  const right = circle();
+  const data = prepareOverlayData({ ...right, lon: right.lon.map(v => -v) });
+  assert.ok(seriesValue(data, 'leanAngle', 1060)! < -10);
+});
+
+test('measures braking as negative', () => {
+  const speed = track.t.map((_, i) => 20 - i * 0.5);
+  assert.ok(Math.abs(seriesValue(prepareOverlayData({ ...track, speed }), 'accelForward', 1010)! + 0.5) < 0.01);
+});
+
+test('ignores the drift of something standing still', () => {
+  const lat = track.t.map((_, i) => 50 + (i % 2) * 0.00001);
+  const data = prepareOverlayData({ ...track, lat, speed: new Array(21).fill(0) });
+  assert.equal(seriesValue(data, 'accelLateral', 1010), 0);
+});
+
+test('averages only while moving, and one GPS jump sets no record', () => {
+  const speed = track.t.map((_, i) => (i < 10 ? 10 : i === 15 ? 40 : 0));
+  const data = prepareOverlayData({ ...track, speed });
+  assert.ok(Math.abs(seriesValue(data, 'averageSpeed', 1020)! - 11.1) < 2);
+  assert.ok(seriesValue(data, 'maxSpeed', 1020)! < 20);
+});
+
+test('tracks route progress and finds a time from a distance', () => {
+  const data = prepareOverlayData(track);
+  assert.ok(Math.abs(seriesValue(data, 'progress', 1010)! - 50) < 0.1);
+  assert.ok(Math.abs(timeAtDistance(data, data.distance[10]) - 1010) < 0.001);
+});
+
+test('numbers zones from the rider, only when the sensor is there', () => {
+  const data = prepareOverlayData(track);
+  const rider = { maxHeartRate: 200, ftp: 200 };
+  assert.equal(readChannel(data, channelDef('heartZone'), undefined, 1010, { ...clip, rider }), 2);
+  assert.equal(readChannel(data, channelDef('heartZone'), undefined, 1010, { ...clip, rider: { ...rider, maxHeartRate: 130 } }), 5);
+  assert.equal(data.available.has('heartZone'), true);
+  assert.equal(data.available.has('powerZone'), false);
 });
 
 test('smooths over the chosen window', () => {

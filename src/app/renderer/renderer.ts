@@ -65,8 +65,10 @@ declare global {
       scanFolder(dir: string): Promise<{ clips: FolderClip[]; tracks: FolderTrack[] }>;
       loadTrack(path: string): Promise<Track>;
       loadClip(path: string): Promise<Clip>;
-      autoSync(job: { clip: string; upsideDown?: boolean; trackPath: string }): Promise<SyncResult>;
-      autoSync(job: { clips: string[]; trackPath: string }): Promise<SessionResult[]>;
+      /** Resolves to null if it was cancelled. */
+      autoSync(job: { clip: string; upsideDown?: boolean; trackPath: string }): Promise<SyncResult | null>;
+      autoSync(job: { clips: string[]; trackPath: string }): Promise<SessionResult[] | null>;
+      cancelSync(): Promise<void>;
       pickProjectSave(name: string): Promise<string | null>;
       pickProjectOpen(): Promise<string | null>;
       writeProject(path: string, project: ProjectFile): Promise<void>;
@@ -160,6 +162,8 @@ let lastOverlayDraw = 0;
 let exporting = false;
 const exportProgress = new Map<string, BatchProgress>();
 let template: Template = layoutFor('cycling');
+let syncing = false;
+const SYNC_CANCELLED = 'Sync cancelled. Nothing was changed.';
 let mode: Mode = 'sync';
 
 const map = L.map('map', { zoomControl: true, attributionControl: true }).setView([52, 0], 5);
@@ -311,8 +315,8 @@ function renderSyncState(detail?: string): void {
   $<HTMLButtonElement>('lock').textContent = linked ? 'Adjust by hand' : 'Match these two points';
   $<HTMLButtonElement>('lock').disabled = !(clip && track);
   const whole = clipsForTrack().length > 1;
-  $<HTMLButtonElement>('auto-sync').disabled = !(track && (clip || folderClips.length > 0));
-  $('auto-sync').textContent = whole ? 'Auto-sync all clips' : 'Auto-sync';
+  $<HTMLButtonElement>('auto-sync').disabled = !syncing && !(track && (clip || folderClips.length > 0));
+  $('auto-sync').textContent = syncing ? 'Cancel' : whole ? 'Auto-sync all clips' : 'Auto-sync';
   renderApplyShift();
   renderClipLine();
   renderGenerateButton();
@@ -439,6 +443,7 @@ function pictureRect(): { left: number; top: number; width: number; height: numb
 
 const editor = createEditor({
   template: () => template,
+  activity: () => track?.kind ?? 'cycling',
   setTemplate: next => {
     template = next;
     renderOverlayPreview();
@@ -562,7 +567,7 @@ function wireLayoutTools(): void {
     if (path) setStatus(`Exported to ${path}`);
   });
   $('layout-reset').addEventListener('click', () => {
-    editor.replace(layoutFor(track?.kind ?? 'cycling'), true);
+    editor.replace(layoutFor(track?.kind ?? 'cycling', overlayData?.available), true);
     setStatus(`Using the ${template.name} layout. It will change to suit whatever activity you open.`);
   });
   $('undo').addEventListener('click', () => editor.undo());
@@ -858,10 +863,14 @@ function restoreSavedResults(): void {
 }
 
 async function runAutoSync(): Promise<void> {
+  if (syncing) {
+    await api.cancelSync();
+    return;
+  }
   if (!track) return;
   const button = $<HTMLButtonElement>('auto-sync');
-  button.disabled = true;
-  button.textContent = 'Matching...';
+  syncing = true;
+  button.textContent = 'Cancel';
   const started = performance.now();
   setStatus('Matching the camera\'s movement to the track');
   try {
@@ -871,6 +880,10 @@ async function runAutoSync(): Promise<void> {
     const droneClips = /\.srt$/i.test(track.path) ? (clip ? [clip.path] : day.map(c => c.path)) : null;
     if (droneClips || day.length > 1 || (day.length === 1 && !clip)) {
       const results = await api.autoSync({ clips: droneClips ?? day.map(c => c.path), trackPath: track.path });
+      if (!results) {
+        setStatus(SYNC_CANCELLED);
+        return;
+      }
       let kept = 0;
       for (const r of results) {
         autoStarts.set(r.path, r.clipStart);
@@ -886,6 +899,10 @@ async function runAutoSync(): Promise<void> {
       setStatus(`${steady} of ${results.length} clips synced in ${seconds()} s${kept ? `, kept ${kept} set by hand` : ''}`);
     } else if (clip) {
       const r = await api.autoSync({ clip: clip.path, upsideDown: isInverted(), trackPath: track.path });
+      if (!r) {
+        setStatus(SYNC_CANCELLED);
+        return;
+      }
       const note = r.confident
         ? 'Matched from camera movement.'
         : 'Likely, but another match was close. Play it and check.';
@@ -899,8 +916,8 @@ async function runAutoSync(): Promise<void> {
   } catch (error) {
     fail(error);
   } finally {
+    syncing = false;
     button.textContent = clipsForTrack().length > 1 ? 'Auto-sync all clips' : 'Auto-sync';
-    button.disabled = false;
   }
 }
 
@@ -1067,7 +1084,8 @@ async function loadTrack(path: string): Promise<void> {
   overlayData = prepareOverlayData(columns, template.gradientSpan);
   clipStart = null;
   confident = false;
-  if (template.auto && template.name !== layoutFor(track.kind).name) editor.replace(layoutFor(track.kind), true);
+  const best = layoutFor(track.kind, overlayData.available);
+  if (template.auto && (template.name !== best.name || JSON.stringify(template.widgets) !== JSON.stringify(best.widgets))) editor.replace(best, true);
   else editor.refresh();
   const points = columns.t.map((_, i) => [columns.lat[i], columns.lon[i]] as L.LatLngTuple);
   line.setLatLngs(points);

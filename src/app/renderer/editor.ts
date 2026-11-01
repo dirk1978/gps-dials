@@ -1,4 +1,5 @@
-import { CHANNELS, channelDef, type ChannelId } from '../../overlay/channels.ts';
+import { channelGroups } from '../../activities/index.ts';
+import { channelDef, type ChannelId } from '../../overlay/channels.ts';
 import { DEFAULT_GRADIENT_SPAN_M } from '../../overlay/data.ts';
 import { DISPLAYS, displayDef } from '../../overlay/displays/index.ts';
 import { fieldsFor, type Field } from '../../overlay/fields.ts';
@@ -9,6 +10,8 @@ import { FONTS, THEMES, newId, newWidget, resolveStyle, type DisplayId, type Sty
 
 export interface EditorHost {
   template(): Template;
+  /** What the open recording is, so its data comes first in the pickers. */
+  activity(): string;
   setTemplate(template: Template): void;
   /** The drawn picture, relative to the stage. Null until a clip is showing. */
   pictureRect(): { left: number; top: number; width: number; height: number } | null;
@@ -50,6 +53,8 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLEl
   node.append(...children);
   return node;
 }
+
+const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
 
 export function createEditor(host: EditorHost) {
   const layer = document.getElementById('editor-layer')!;
@@ -370,16 +375,59 @@ export function createEditor(host: EditorHost) {
     return hint ? el('div', {}, wrapper, el('p', { className: 'hint', textContent: hint })) : wrapper;
   }
 
-  function control(kind: string, value: unknown, options: { min?: number; max?: number; step?: number; choices?: [string, string][] }, onInput: (v: unknown) => void, onCommit: () => void): HTMLElement {
+  /** Changes what a widget shows, dropping settings that only made sense for the old data. */
+  function setChannel(widget: Widget, channel: ChannelId): void {
+    widget.channel = channel;
+    delete widget.style.unit;
+    delete widget.style.labelText;
+    delete widget.style.min;
+    delete widget.style.max;
+    delete widget.style.step;
+    delete widget.style.decimals;
+  }
+
+  /** The data to choose from, sorted under activities with the current one first. */
+  function channelOptions(): HTMLOptGroupElement[] {
+    const data = host.channelsWithData();
+    return channelGroups(host.activity()).map(group => el('optgroup', { label: group.name }, ...group.channels.map(id => {
+      const missing = data && !data.has(id) ? ' (none in this file)' : '';
+      return el('option', { value: id, textContent: `${channelDef(id).label}${missing}` });
+    })));
+  }
+
+  function control(kind: string, value: unknown, options: { min?: number; max?: number; step?: number; choices?: [string, string][]; groups?: HTMLElement[] }, onInput: (v: unknown) => void, onCommit: () => void): HTMLElement {
     if (kind === 'select') {
       const select = el('select');
-      select.append(...(options.choices ?? []).map(([v, label]) => el('option', { value: v, textContent: label })));
+      select.append(...(options.choices ?? []).map(([v, label]) => el('option', { value: v, textContent: label })), ...(options.groups ?? []));
       select.value = String(value);
       select.addEventListener('change', () => {
         onInput(select.value);
         onCommit();
       });
       return select;
+    }
+    if (kind === 'image') {
+      const wrap = el('span', { className: 'range' });
+      const picker = el('input', { type: 'file', accept: 'image/png,image/webp,image/jpeg', hidden: true });
+      const choose = el('button', { textContent: value ? 'Change picture' : 'Choose picture' });
+      choose.addEventListener('click', () => picker.click());
+      picker.addEventListener('change', () => {
+        const file = picker.files?.[0];
+        if (!file) return;
+        if (file.size > MAX_IMAGE_BYTES) {
+          host.status('That picture is over 3 MB. Layouts carry their pictures with them, so please use a smaller one.');
+          return;
+        }
+        const reader = new FileReader();
+        reader.addEventListener('load', () => {
+          onInput(reader.result);
+          onCommit();
+          renderInspector();
+        });
+        reader.readAsDataURL(file);
+      });
+      wrap.append(choose, picker);
+      return wrap;
     }
     if (kind === 'toggle') {
       const box = el('input', { type: 'checkbox', checked: Boolean(value) });
@@ -492,7 +540,6 @@ export function createEditor(host: EditorHost) {
   }
 
   function widgetInspector(widget: Widget): void {
-    const data = host.channelsWithData();
     const def = channelDef(widget.channel);
 
     const name = el('input', { type: 'text', value: widget.name });
@@ -502,16 +549,8 @@ export function createEditor(host: EditorHost) {
     });
     name.addEventListener('change', commit);
 
-    const channelSelect = control('select', widget.channel, {
-      choices: CHANNELS.map(c => [c.id, `${c.label}${data && !data.has(c.id) ? ' (none in this file)' : ''}`]),
-    }, v => {
-      widget.channel = v as ChannelId;
-      delete widget.style.unit;
-      delete widget.style.labelText;
-      delete widget.style.min;
-      delete widget.style.max;
-      delete widget.style.step;
-      delete widget.style.decimals;
+    const channelSelect = control('select', widget.channel, { groups: channelOptions() }, v => {
+      setChannel(widget, v as ChannelId);
       host.redraw();
     }, () => {
       commit();
@@ -519,6 +558,11 @@ export function createEditor(host: EditorHost) {
     });
     const displaySelect = control('select', widget.display, { choices: DISPLAYS.map(d => [d.id, d.label]) }, v => {
       widget.display = v as DisplayId;
+      const prefers = displayDef(widget.display).prefers;
+      if (prefers && prefers !== widget.channel) {
+        if (widget.name === def.label) widget.name = channelDef(prefers).label;
+        setChannel(widget, prefers);
+      }
       host.redraw();
     }, () => {
       commit();
@@ -657,7 +701,14 @@ export function createEditor(host: EditorHost) {
     else themeInspector();
   }
 
+  function renderAddData(): void {
+    const chosen = addData.value;
+    addData.replaceChildren(...channelOptions());
+    if (chosen) addData.value = chosen;
+  }
+
   function refresh(): void {
+    renderAddData();
     renderLayers();
     renderInspector();
     renderSelection();
@@ -683,10 +734,10 @@ export function createEditor(host: EditorHost) {
     return button;
   }));
 
-  addData.replaceChildren(...CHANNELS.map(c => el('option', { value: c.id, textContent: c.label })));
+  renderAddData();
   addDisplay.replaceChildren(...DISPLAYS.map(d => el('option', { value: d.id, textContent: d.label })));
   document.getElementById('add-widget')!.addEventListener('click', () => {
-    const widget = newWidget(addData.value as ChannelId, addDisplay.value as DisplayId);
+    const widget = newWidget(displayDef(addDisplay.value).prefers ?? addData.value as ChannelId, addDisplay.value as DisplayId);
     host.template().widgets.push(widget);
     selected = widget.id;
     host.redraw();

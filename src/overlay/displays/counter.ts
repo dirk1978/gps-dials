@@ -19,7 +19,11 @@ export const counter: DisplayDef = {
       // Gradient and similar read better coloured by direction, unless a colour has been chosen.
       const signed = widget.channel === 'gradient' && value != null && !style.useZones && !widget.style.color;
       ctx.fillStyle = signed ? (value >= 0 ? env.upColor : env.downColor) : style.useZones ? valueColor(style, value) : widget.style.color ? style.color : style.textColor;
-      drawText(env, `${valueText}${units && units.length <= 2 ? units : units ? ` ${units}` : ''}`, x, box.y + box.h * (hasLabel ? 0.4 : 0.5));
+      const reading = `${valueText}${units && units.length <= 2 ? units : units ? ` ${units}` : ''}`;
+      // Dates and coordinates run long, so they shrink to stay inside the panel.
+      const width = ctx.measureText(reading).width;
+      if (width > box.w - pad) setFont(ctx, style, size * ((box.w - pad) / width));
+      drawText(env, reading, x, box.y + box.h * (hasLabel ? 0.4 : 0.5));
     }
     if (hasLabel) spacedLabel(env, style.labelText, x, box.y + box.h * 0.8, box.h * 0.15 * style.labelSize, style.mutedColor);
   },

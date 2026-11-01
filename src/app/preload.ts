@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('gpsDials', {
   loadTrack: (path: string) => ipcRenderer.invoke('load-track', path),
   loadClip: (path: string) => ipcRenderer.invoke('load-clip', path),
   autoSync: (job: unknown) => ipcRenderer.invoke('auto-sync', job),
+  cancelSync: () => ipcRenderer.invoke('cancel-sync'),
   pickProjectSave: (name: string) => ipcRenderer.invoke('project-pick-save', name),
   pickProjectOpen: () => ipcRenderer.invoke('project-pick-open'),
   writeProject: (path: string, project: unknown) => ipcRenderer.invoke('project-write', path, project),

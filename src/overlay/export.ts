@@ -3,7 +3,7 @@ import { mkdirSync, renameSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { basename, dirname, join } from 'node:path';
 import { once } from 'node:events';
-import { GlobalFonts, createCanvas } from '@napi-rs/canvas';
+import { GlobalFonts, createCanvas, loadImage } from '@napi-rs/canvas';
 import type { TrackColumns } from '../sync/timeline.ts';
 import { prepareOverlayData, type OverlayData } from './data.ts';
 import { drawFrame, type Ctx } from './draw.ts';
@@ -129,6 +129,11 @@ export async function renderOverlay(
   const data = prepareOverlayData(job.track, job.template.gradientSpan);
   const mapToken = job.mapToken ?? '';
   const { images, missing } = await loadTiles(tilesForClip(job.template, width, height, job.clipStart, duration, data, mapToken));
+  for (const widget of job.template.widgets) {
+    for (const picture of [widget.style.imageDial, widget.style.imageNeedle]) {
+      if (picture) images.set(picture, await loadImage(Buffer.from(picture.split(',')[1], 'base64')));
+    }
+  }
   const frame = {
     width,
     height,

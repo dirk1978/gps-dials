@@ -1,5 +1,5 @@
 import { indexAtTime, type TrackColumns } from '../sync/timeline.ts';
-import { CHANNELS, type ChannelId } from './channels.ts';
+import { CHANNELS, GRAVITY, type ChannelId } from './channels.ts';
 
 const EARTH_RADIUS_M = 6_371_000;
 /**
@@ -13,6 +13,12 @@ const ASCENT_THRESHOLD_M = 2;
 const VERTICAL_SPAN_S = 30;
 const HEADING_SPAN_M = 15;
 const DERIVED_SPEED_SPAN_S = 2;
+const ACCELERATION_SPAN_S = 3;
+const TURN_SPAN_S = 3;
+/** Below walking pace, GPS drift looks like sharp turns. */
+const MIN_TURNING_SPEED = 2;
+const MOVING_SPEED = 0.5;
+const MAX_SPEED_POINTS = 3;
 
 export interface OverlayData {
   track: TrackColumns;
@@ -93,6 +99,72 @@ function headingSeries(track: TrackColumns, distance: number[]): (number | null)
   return out;
 }
 
+/** The first and last points within `span` seconds either side of each point. */
+function centredWindow(t: number[], span: number, visit: (i: number, from: number, to: number) => void): void {
+  let from = 0;
+  let to = 0;
+  for (let i = 0; i < t.length; i++) {
+    while (t[i] - t[from] > span / 2) from++;
+    while (to < t.length - 1 && t[to + 1] - t[i] <= span / 2) to++;
+    visit(i, from, to);
+  }
+}
+
+/** Speeding up or braking, in m/s². GPS speed is too noisy to compare neighbouring points. */
+function forwardAcceleration(t: number[], speed: (number | null)[]): (number | null)[] {
+  const out = new Array<number | null>(t.length).fill(null);
+  centredWindow(t, ACCELERATION_SPAN_S, (i, from, to) => {
+    const a = speed[from];
+    const b = speed[to];
+    if (a != null && b != null && t[to] > t[from]) out[i] = (b - a) / (t[to] - t[from]);
+  });
+  return out;
+}
+
+/** Cornering force in m/s², positive turning right: speed times how fast the direction is changing. */
+function lateralAcceleration(t: number[], speed: (number | null)[], heading: (number | null)[]): (number | null)[] {
+  const out = new Array<number | null>(t.length).fill(null);
+  centredWindow(t, TURN_SPAN_S, (i, from, to) => {
+    const a = heading[from];
+    const b = heading[to];
+    const v = speed[i];
+    if (a == null || b == null || v == null || t[to] <= t[from]) return;
+    if (v < MIN_TURNING_SPEED) {
+      out[i] = 0;
+      return;
+    }
+    const turn = (((b - a) % 360) + 540) % 360 - 180;
+    out[i] = v * ((turn * Math.PI) / 180 / (t[to] - t[from]));
+  });
+  return out;
+}
+
+/** Average speed while moving, so a cafe stop doesn't drag it down. */
+function averageSpeedSeries(t: number[], distance: number[], speed: (number | null)[]): (number | null)[] {
+  let moving = 0;
+  let covered = 0;
+  return t.map((_, i) => {
+    if (i > 0 && (speed[i] ?? 0) >= MOVING_SPEED) {
+      moving += t[i] - t[i - 1];
+      covered += distance[i] - distance[i - 1];
+    }
+    return moving > 0 ? covered / moving : null;
+  });
+}
+
+/** Fastest so far, over a few points so that one GPS jump can't set the record. */
+function maxSpeedSeries(speed: (number | null)[]): (number | null)[] {
+  let best: number | null = null;
+  return speed.map((_, i) => {
+    const near = speed.slice(Math.max(0, i - MAX_SPEED_POINTS + 1), i + 1).filter(v => v != null);
+    if (near.length === MAX_SPEED_POINTS) {
+      const mean = near.reduce((sum, v) => sum + v, 0) / near.length;
+      if (best == null || mean > best) best = mean;
+    }
+    return best;
+  });
+}
+
 /** For recordings without a speed sensor, such as a drone's subtitle track. */
 function speedFromPositions(track: TrackColumns, distance: number[]): (number | null)[] {
   const n = track.t.length;
@@ -114,6 +186,9 @@ export function prepareOverlayData(track: TrackColumns, gradientSpan = DEFAULT_G
   const total = distance[n - 1];
   const speed = track.speed.some(v => v != null) ? track.speed : speedFromPositions(track, distance);
   const startAltitude = track.altitude.find(v => v != null) ?? 0;
+  const heading = headingSeries(track, distance);
+  const forward = forwardAcceleration(track.t, speed);
+  const lateral = lateralAcceleration(track.t, speed, heading);
 
   const series: OverlayData['series'] = {
     speed,
@@ -128,9 +203,19 @@ export function prepareOverlayData(track: TrackColumns, gradientSpan = DEFAULT_G
     gradient: gradientSeries(track, distance, gradientSpan),
     ascent: ascentSeries(track),
     verticalSpeed: verticalSpeedSeries(track),
-    heading: headingSeries(track, distance),
+    heading,
     distance,
     remaining: distance.map(d => total - d),
+    progress: distance.map(d => (total > 0 ? (d / total) * 100 : null)),
+    averageSpeed: averageSpeedSeries(track.t, distance, speed),
+    maxSpeed: maxSpeedSeries(speed),
+    accelForward: forward,
+    accelLateral: lateral,
+    gForce: forward.map((a, i) => (a == null || lateral[i] == null ? null : Math.hypot(a, lateral[i]))),
+    // The lean that balances cornering force, as for a bike, or the bank of a level turn in a plane.
+    leanAngle: lateral.map(a => (a == null ? null : (Math.atan(a / GRAVITY) * 180) / Math.PI)),
+    latitude: track.lat,
+    longitude: track.lon,
   };
 
   const available = new Set<ChannelId>(CHANNELS.filter(c => c.clock).map(c => c.id));
@@ -138,7 +223,38 @@ export function prepareOverlayData(track: TrackColumns, gradientSpan = DEFAULT_G
     // Zero alone means a sensor wasn't connected, so it doesn't count as data.
     if (values?.some(v => v != null && (v !== 0 || id === 'gradient' || id === 'ascent'))) available.add(id as ChannelId);
   }
+  if (available.has('heartRate')) available.add('heartZone');
+  if (available.has('power')) available.add('powerZone');
   return { track, distance, series, available, gradientSpan };
+}
+
+/** When the track reached `metres` along itself. */
+export function timeAtDistance(data: OverlayData, metres: number): number {
+  const { distance, track: { t } } = data;
+  let low = 0;
+  let high = distance.length - 1;
+  while (high - low > 1) {
+    const mid = (low + high) >> 1;
+    if (distance[mid] <= metres) low = mid;
+    else high = mid;
+  }
+  const span = distance[high] - distance[low];
+  const f = span > 0 ? Math.min(1, Math.max(0, (metres - distance[low]) / span)) : 0;
+  return t[low] + (t[high] - t[low]) * f;
+}
+
+/** Averages directions, where a plain average of 359 and 1 would point south instead of north. */
+function meanHeading(values: (number | null)[], from: number, to: number): number | null {
+  let x = 0;
+  let y = 0;
+  for (let i = from; i <= to; i++) {
+    const v = values[i];
+    if (v == null) continue;
+    x += Math.sin((v * Math.PI) / 180);
+    y += Math.cos((v * Math.PI) / 180);
+  }
+  if (x === 0 && y === 0) return null;
+  return ((Math.atan2(x, y) * 180) / Math.PI + 360) % 360;
 }
 
 /** A base-unit value at `time`, averaged over `smoothing` seconds when asked. */
@@ -150,6 +266,7 @@ export function seriesValue(data: OverlayData, channel: ChannelId, time: number,
   if (smoothing > 0) {
     const from = indexAtTime(t, time - smoothing / 2);
     const to = indexAtTime(t, time + smoothing / 2);
+    if (channel === 'heading') return meanHeading(values, from, to);
     let sum = 0;
     let count = 0;
     for (let i = from; i <= to; i++) {

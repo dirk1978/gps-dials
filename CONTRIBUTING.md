@@ -32,7 +32,7 @@ Each display type is one file in `src/overlay/displays/`, using [counter.ts](src
 
 ## Add an activity
 
-Skiing, sailing, paragliding, anything else: each activity is one file in `src/activities/`, with [flying.ts](src/activities/flying.ts) as a short example. It says which FIT sport numbers or file types mean this activity, and what layout to start with, using units that suit it. List it in [index.ts](src/activities/index.ts). Opening a matching recording then picks that layout automatically, and it joins the presets.
+Skiing, sailing, paragliding, anything else: each activity is one file in `src/activities/`, with [flying.ts](src/activities/flying.ts) as a short example. It says which FIT sport numbers or file types mean this activity, which data matters for it, and what layout to start with, using units that suit it. Data can belong to any number of activities. A gauge in the layout can name what to show instead when a file lacks its data, so the space never sits empty. List it in [index.ts](src/activities/index.ts). Opening a matching recording then picks that layout automatically, and it joins the presets.
 
 ## Add a map style or preset
 
