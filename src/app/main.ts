@@ -14,9 +14,11 @@ import {
 } from '../compare/compare.ts';
 import { TERRAIN_CREDIT, fetchTerrain } from '../compare/terrain.ts';
 import type { Template } from '../overlay/template.ts';
-import { scanFolder } from './folder.ts';
+import { scanFolder, tracksNear } from './folder.ts';
 import { deleteLayout, importLayout, listLayouts, loadLayout, loadWorkingCopy, saveLayout, saveWorkingCopy } from './layouts.ts';
-import { cancelOverlays, renderBatch, type OverlayBatch } from './overlay-queue.ts';
+import { bestVideoEncoder } from '../overlay/encoders.ts';
+import type { VideoCodec, VideoSettings } from '../overlay/video-settings.ts';
+import { cancelOverlays, exportVideo, planVideo, renderBatch, type OverlayBatch, type VideoBatch, type VideoItem } from './overlay-queue.ts';
 import { PROJECT_EXTENSION, addRecent, missingFiles, parseProject } from './project.ts';
 import { ensureProxy } from './proxy.ts';
 
@@ -102,7 +104,7 @@ function registerIpc(): void {
 
   ipcMain.handle('pick-file', async (_event, kind: 'clip' | 'track') => {
     const filters = kind === 'clip'
-      ? [{ name: 'Video', extensions: ['mp4', 'mov', 'insv'] }]
+      ? [{ name: 'Video', extensions: ['mp4', 'mov', 'm4v', 'mkv', 'avi', 'insv'] }]
       : [{ name: 'Track', extensions: ['fit', 'gpx', 'srt'] }];
     const { canceled, filePaths } = await dialog.showOpenDialog(window, { properties: ['openFile'], filters });
     return canceled ? null : filePaths[0];
@@ -203,12 +205,26 @@ function registerIpc(): void {
   ));
   ipcMain.handle('cancel-overlays', () => cancelOverlays());
 
+  ipcMain.handle('video-codecs', () => (['h264', 'hevc', 'av1'] as VideoCodec[]).flatMap(codec => {
+    const encoder = bestVideoEncoder(codec);
+    return encoder ? [{ codec, label: `${{ h264: 'H.264', hevc: 'H.265 (HEVC)', av1: 'AV1' }[codec]} on ${encoder.name}` }] : [];
+  }));
+  ipcMain.handle('video-plan', (_event, item: VideoItem, settings: VideoSettings) => planVideo(item, settings));
+  ipcMain.handle('pick-video-save', async (_event, name: string) => {
+    const { canceled, filePath } = await dialog.showSaveDialog(window, { defaultPath: name, filters: [{ name: 'MP4 video', extensions: ['mp4'] }] });
+    return canceled || !filePath ? null : filePath;
+  });
+  ipcMain.handle('export-video', (event, batch: VideoBatch) => (
+    exportVideo(join(__dirname, 'overlay-worker.cjs'), { ...batch, mapToken: readMapToken() }, progress => event.sender.send('overlay-progress', progress))
+  ));
+
   ipcMain.handle('pick-folder', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog(window, { properties: ['openDirectory'] });
     return canceled ? null : filePaths[0];
   });
 
   ipcMain.handle('scan-folder', (_event, dir: string) => scanFolder(dir));
+  ipcMain.handle('tracks-near', (_event, clip: string, clockTime: number) => tracksNear(clip, clockTime));
 
   ipcMain.handle('auto-sync', (event, job: { clip?: string; clips?: string[]; upsideDown?: boolean; trackPath: string }) => new Promise((resolve, reject) => {
     const worker = utilityProcess.fork(join(__dirname, 'sync-worker.cjs'), [], { serviceName: 'gps-dials sync' });

@@ -253,7 +253,7 @@ export function newId(): string {
   return `w${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
 }
 
-const DEFAULT_SIZES: Record<DisplayId, [number, number]> = {
+export const DEFAULT_SIZES: Record<DisplayId, [number, number]> = {
   dial: [0.15, 0.2667], arc: [0.15, 0.2667], vsi: [0.15, 0.2667], compass: [0.15, 0.2667], tape: [0.3, 0.1], tilt: [0.15, 0.17], horizon: [0.15, 0.2667], scope: [0.15, 0.2667],
   zones: [0.22, 0.1], stats: [0.22, 0.12], image: [0.15, 0.2667], bar: [0.25, 0.08], graph: [0.34, 0.18], counter: [0.11, 0.11], text: [0.24, 0.08], route: [0.2, 0.3556], profile: [0.5, 0.11], map: [0.2, 0.3556],
 };

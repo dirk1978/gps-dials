@@ -80,7 +80,7 @@ function fontPath(file: string): string {
 }
 
 /** The export has no browser to load the display font, so it registers the same files. */
-function registerFonts(): void {
+export function registerFonts(): void {
   if (fontsReady) return;
   GlobalFonts.loadSystemFonts();
   for (const weight of FONT_FILES) {
@@ -116,17 +116,9 @@ function tilesForClip(template: Template, width: number, height: number, clipSta
   return urls;
 }
 
-/** Renders one overlay file. It appears at `outPath` only once it is complete. */
-export async function renderOverlay(
-  job: OverlayJob,
-  onProgress: (fraction: number) => void = () => {},
-  signal?: AbortSignal,
-): Promise<RenderStats> {
-  const started = Date.now();
+/** Everything drawing needs for one clip at this size, with its map images fetched. */
+export async function overlayFrame(job: Pick<OverlayJob, 'clip' | 'clipStart' | 'track' | 'template' | 'mapToken'>, width: number, height: number, duration: number) {
   registerFonts();
-  const { width, height, fps, duration } = clipGeometry(job.clip, job.extraRotation);
-  const hz = job.updateHz ?? DEFAULT_UPDATE_HZ;
-  const frames = Math.ceil(duration * hz);
   const data = prepareOverlayData(job.track, job.template.gradientSpan, job.template.launchSpeed);
   const mapToken = job.mapToken ?? '';
   const { images, missing } = await loadTiles(tilesForClip(job.template, width, height, job.clipStart, duration, data, mapToken));
@@ -135,17 +127,33 @@ export async function renderOverlay(
       if (picture) images.set(picture, await loadImage(Buffer.from(picture.split(',')[1], 'base64')));
     }
   }
-  const frame = {
-    width,
-    height,
-    template: job.template,
-    data,
-    clipStart: job.clipStart,
-    clipEnd: job.clipStart + duration,
-    mapToken,
-    sensors: readClipSensors(job.clip),
-    tiles: { image: (url: string) => (images.get(url) ?? null) as unknown as CanvasImageSource | null },
+  return {
+    missing,
+    frame: {
+      width,
+      height,
+      template: job.template,
+      data,
+      clipStart: job.clipStart,
+      clipEnd: job.clipStart + duration,
+      mapToken,
+      sensors: readClipSensors(job.clip),
+      tiles: { image: (url: string) => (images.get(url) ?? null) as unknown as CanvasImageSource | null },
+    },
   };
+}
+
+/** Renders one overlay file. It appears at `outPath` only once it is complete. */
+export async function renderOverlay(
+  job: OverlayJob,
+  onProgress: (fraction: number) => void = () => {},
+  signal?: AbortSignal,
+): Promise<RenderStats> {
+  const started = Date.now();
+  const { width, height, fps, duration } = clipGeometry(job.clip, job.extraRotation);
+  const hz = job.updateHz ?? DEFAULT_UPDATE_HZ;
+  const frames = Math.ceil(duration * hz);
+  const { frame, missing } = await overlayFrame(job, width, height, duration);
 
   mkdirSync(dirname(job.outPath), { recursive: true });
   const extension = FORMAT_EXTENSIONS[job.format];

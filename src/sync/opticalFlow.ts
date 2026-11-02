@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 
 const WIDTH = 160;
 const HEIGHT = 90;
@@ -9,6 +9,7 @@ const MAX_SHIFT_Y = 4;
 const BAND_TOP = 0.05;
 const BAND_BOTTOM = 0.45;
 const ASSUMED_HFOV_RAD = (120 * Math.PI) / 180;
+const PROGRESS_EVERY = 20;
 
 /** Best sideways shift between two frames, in pixels, with a sub-pixel estimate. */
 function horizontalShift(prev: Uint8Array, cur: Uint8Array): number {
@@ -40,7 +41,7 @@ function horizontalShift(prev: Uint8Array, cur: Uint8Array): number {
  * Rate of turn measured from the picture alone, in radians per second at `hz`,
  * positive clockwise. The scale is approximate but correlation ignores scale.
  */
-export async function imageYawRate(clip: string, hz: number, upsideDown = false): Promise<Float64Array> {
+export async function imageYawRate(clip: string, hz: number, upsideDown = false, onProgress?: (fraction: number) => void): Promise<Float64Array> {
   // An inverted picture would swap left and right, and put the handlebars in the analysed band.
   const turn = upsideDown ? 'hflip,vflip,' : '';
   const ffmpeg = spawn('ffmpeg', [
@@ -48,6 +49,8 @@ export async function imageYawRate(clip: string, hz: number, upsideDown = false)
     '-vf', `${turn}fps=${FPS},scale=${WIDTH}:${HEIGHT},format=gray`, '-f', 'rawvideo', '-',
   ], { stdio: ['ignore', 'pipe', 'inherit'] });
 
+  const duration = Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', clip]).toString());
+  const expected = Math.max(1, duration * FPS);
   const frameSize = WIDTH * HEIGHT;
   const shifts: number[] = [];
   let pending = Buffer.alloc(0);
@@ -60,6 +63,7 @@ export async function imageYawRate(clip: string, hz: number, upsideDown = false)
       off += frameSize;
       if (prev) shifts.push(horizontalShift(prev, frame));
       prev = frame;
+      if (onProgress && shifts.length % PROGRESS_EVERY === 0) onProgress(Math.min(1, shifts.length / expected));
     }
     pending = pending.subarray(off);
   }

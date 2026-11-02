@@ -22,6 +22,8 @@ export interface ClipMotion {
   roughness?: Float64Array;
   /** Short description of the data used, shown in the report. */
   source: string;
+  /** Set if `turnRate` may run the wrong way round, so sync tries it both ways. */
+  signUnknown?: boolean;
 }
 
 /** What a camera recorded about itself, on the clip's own clock rather than the GPS track's. */
@@ -44,7 +46,9 @@ export interface DeviceAdapter {
   /** Must be quick and must not throw for files from other devices. */
   canRead(clip: string): boolean;
   /** `upsideDown` is set when the picture is inverted and the file doesn't say so. */
-  readMotion(clip: string, hz: number, upsideDown?: boolean): Promise<ClipMotion>;
+  readMotion(clip: string, hz: number, upsideDown?: boolean, onProgress?: (fraction: number) => void): Promise<ClipMotion>;
   /** Optional: settings and sensors to offer as overlay data. Null if this clip has none. */
   readSensors?(clip: string): ClipSensors | null;
+  /** Optional: the true time of the first frame, from GPS recorded in the clip. Null if it has no fix. */
+  gpsStart?(clip: string): number | null;
 }

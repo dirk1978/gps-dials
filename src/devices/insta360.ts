@@ -38,7 +38,7 @@ function trailerRecord(clip: string, wanted: number): Buffer | null {
 
 export const insta360: DeviceAdapter = {
   id: 'insta360',
-  name: 'Insta360 GO 3',
+  name: 'Insta360',
 
   canRead(clip) {
     try {
@@ -48,7 +48,7 @@ export const insta360: DeviceAdapter = {
     }
   },
 
-  readMotion: (clip, hz, upsideDown) => genericVideo.readMotion(clip, hz, upsideDown),
+  readMotion: (clip, hz, upsideDown, onProgress) => genericVideo.readMotion(clip, hz, upsideDown, onProgress),
 
   /** Only the shutter speed: the files tried so far don't hold gyro records. */
   readSensors(clip) {

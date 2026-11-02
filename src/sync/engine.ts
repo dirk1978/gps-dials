@@ -4,6 +4,7 @@ import { srtClipStart } from '../activity/dji-srt.ts';
 import type { TrackPoint } from '../activity/types.ts';
 import { genericVideo } from '../devices/generic-video.ts';
 import { findDevice } from '../devices/index.ts';
+import type { DeviceAdapter } from '../devices/types.ts';
 import { clipClockTime } from './clock.ts';
 import { clockInliers, localClockError } from './consensus.ts';
 import { gpsYawRate, resample, slidingCorrelation, smooth, topPeaks } from './correlate.ts';
@@ -28,6 +29,8 @@ const VOTE_SPEED_R = 0.35;
 /** How far a clip may refine the day's clock error using its own motion. */
 const REFINE_S = 3;
 const REFINE_MIN_R = 0.5;
+/** A long clip can start before a track does and still overlap it. */
+const GPS_MARGIN_S = 3600;
 
 export { clipClockTime };
 
@@ -63,16 +66,19 @@ interface Analysis {
   scoreAt(clipStart: number): number;
 }
 
-async function analyseClip(clip: string, track: TrackPoint[], deviceId?: string, upsideDown?: boolean): Promise<Analysis> {
+async function analyseClip(clip: string, track: TrackPoint[], deviceId?: string, upsideDown?: boolean, onProgress?: (fraction: number) => void): Promise<Analysis> {
   const device = findDevice(clip, deviceId);
   // Only picture-based motion cares, and checking every clip of a long day isn't free.
   const inverted = upsideDown ?? (device.id === genericVideo.id && await isUpsideDown(clip));
-  const motion = await device.readMotion(clip, HZ, inverted);
+  const motion = await device.readMotion(clip, HZ, inverted, onProgress);
 
   const smoothing = SMOOTH_S * HZ + 1;
   const start = track[0].t;
   const grid = resample(track, start, HZ);
-  const turn = slidingCorrelation(smooth(motion.turnRate, smoothing), smooth(gpsYawRate(grid, HZ, COURSE_SPAN_S), smoothing));
+  const gpsTurn = smooth(gpsYawRate(grid, HZ, COURSE_SPAN_S), smoothing);
+  const forwards = slidingCorrelation(smooth(motion.turnRate, smoothing), gpsTurn);
+  const backwards = motion.signUnknown ? slidingCorrelation(smooth(motion.turnRate.map(v => -v), smoothing), gpsTurn) : null;
+  const turn = backwards && Math.max(...backwards.scores) > Math.max(...forwards.scores) ? backwards : forwards;
   const speed = motion.roughness ? slidingCorrelation(smooth(motion.roughness, smoothing), smooth(grid.speed, smoothing)) : null;
 
   const timeAt = (index: number) => start + (index + turn.origin) / HZ;
@@ -107,8 +113,17 @@ async function analyseClip(clip: string, track: TrackPoint[], deviceId?: string,
   };
 }
 
-export async function syncClip(clip: string, track: TrackPoint[], deviceId?: string, upsideDown?: boolean): Promise<SyncResult> {
-  return (await analyseClip(clip, track, deviceId, upsideDown)).result;
+export async function syncClip(clip: string, track: TrackPoint[], deviceId?: string, upsideDown?: boolean, onProgress?: (fraction: number) => void): Promise<SyncResult> {
+  const device = findDevice(clip, deviceId);
+  const timed = gpsTimed(device, clip, track);
+  return timed ?? (await analyseClip(clip, track, deviceId, upsideDown, onProgress)).result;
+}
+
+/** A clip with its own GPS knows the true time, so nothing needs matching if that falls on this track. */
+function gpsTimed(device: DeviceAdapter, clip: string, track: TrackPoint[]): SessionResult | null {
+  const start = device.gpsStart?.(clip);
+  if (start == null || start > track[track.length - 1].t || start + GPS_MARGIN_S < track[0].t) return null;
+  return exactResult(clip, start, device.name, 'GPS time in the video');
 }
 
 /** Drone subtitles were written frame by frame with the clip, so nothing needs matching. */
@@ -116,7 +131,10 @@ function exactResults(clips: SessionClip[], trackPath?: string): SessionResult[]
   if (!trackPath) return null;
   // GPS stored inside the video is on the clip's clock from the first frame.
   const inside = clips.find(c => c.path === trackPath);
-  if (inside) return [exactResult(inside.path, clipClockTime(inside.path))];
+  if (inside) {
+    const device = findDevice(inside.path);
+    return [exactResult(inside.path, device.gpsStart?.(inside.path) ?? clipClockTime(inside.path))];
+  }
   if (extname(trackPath).toLowerCase() !== '.srt') return null;
   const stem = trackPath.slice(0, -extname(trackPath).length).toLowerCase();
   const clip = clips.find(c => c.path.slice(0, -extname(c.path).length).toLowerCase() === stem);
@@ -125,10 +143,10 @@ function exactResults(clips: SessionClip[], trackPath?: string): SessionResult[]
   return [exactResult(clip.path, clipStart)];
 }
 
-function exactResult(path: string, clipStart: number): SessionResult {
+function exactResult(path: string, clipStart: number, deviceName = 'DJI drone', source = 'subtitle track'): SessionResult {
   return {
     path, clipStart, clockTime: clipClockTime(path), turnR: 1, speedR: null, lead: 1, runnerUp: null,
-    confident: true, deviceName: 'DJI drone', source: 'subtitle track', motionSeconds: 0, basis: 'from its own subtitles',
+    confident: true, deviceName, source, motionSeconds: 0, basis: 'from its own subtitles',
   };
 }
 
@@ -145,9 +163,15 @@ export async function syncSession(
 ): Promise<SessionResult[]> {
   const exact = exactResults(clips, trackPath);
   if (exact) return exact;
+  const stamped = new Map(clips.map(c => [c.path, gpsTimed(findDevice(c.path), c.path, track)]));
+  const unstamped = clips.filter(c => !stamped.get(c.path));
+  if (unstamped.length < clips.length) {
+    const rest = unstamped.length ? await syncSession(unstamped, track, onProgress, trackPath) : [];
+    return [...[...stamped.values()].filter(r => r != null), ...rest];
+  }
   const analyses: (Analysis & { path: string })[] = [];
   for (const [i, clip] of clips.entries()) {
-    analyses.push({ ...(await analyseClip(clip.path, track, undefined, clip.upsideDown)), path: clip.path });
+    analyses.push({ ...(await analyseClip(clip.path, track, undefined, clip.upsideDown, fraction => onProgress(i + fraction, clips.length))), path: clip.path });
     onProgress(i + 1, clips.length);
   }
 

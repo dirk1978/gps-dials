@@ -16,6 +16,6 @@ export const djiNeo: DeviceAdapter = {
     }
   },
 
-  readMotion: (clip, hz, upsideDown) => genericVideo.readMotion(clip, hz, upsideDown),
+  readMotion: (clip, hz, upsideDown, onProgress) => genericVideo.readMotion(clip, hz, upsideDown, onProgress),
   readSensors: djiSettings,
 };

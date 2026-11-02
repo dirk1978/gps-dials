@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('gpsDials', {
   compareSources: (items: unknown) => ipcRenderer.invoke('compare-sources', items),
   checkTerrain: (items: unknown) => ipcRenderer.invoke('check-terrain', items),
   combineSources: (items: unknown, choices: unknown, name: string) => ipcRenderer.invoke('combine-sources', items, choices, name),
+  tracksNear: (clip: string, clockTime: number) => ipcRenderer.invoke('tracks-near', clip, clockTime),
   listLayouts: () => ipcRenderer.invoke('list-layouts'),
   loadLayout: (name: string) => ipcRenderer.invoke('load-layout', name),
   saveLayout: (name: string, template: unknown) => ipcRenderer.invoke('save-layout', name, template),
@@ -34,6 +35,10 @@ contextBridge.exposeInMainWorld('gpsDials', {
   exportLayout: (template: unknown) => ipcRenderer.invoke('export-layout', template),
   exportOverlays: (batch: unknown) => ipcRenderer.invoke('export-overlays', batch),
   cancelOverlays: () => ipcRenderer.invoke('cancel-overlays'),
+  videoCodecs: () => ipcRenderer.invoke('video-codecs'),
+  videoPlan: (item: unknown, settings: unknown) => ipcRenderer.invoke('video-plan', item, settings),
+  pickVideoSave: (name: string) => ipcRenderer.invoke('pick-video-save', name),
+  exportVideo: (batch: unknown) => ipcRenderer.invoke('export-video', batch),
   onOverlayProgress: (listener: (progress: unknown) => void) => {
     ipcRenderer.on('overlay-progress', (_event, progress) => listener(progress));
   },

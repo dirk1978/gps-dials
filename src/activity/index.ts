@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { extname } from 'node:path';
 import { activityForExtension, activityForFitSport } from '../activities/index.ts';
 import { readDjmdTrack } from '../devices/dji/djmd.ts';
+import { findGpmfStream, gpsTrack, readPayloads } from '../devices/gopro/gpmf.ts';
 import { clipClockTime } from '../sync/clock.ts';
 import { COMBINED_EXTENSION, readCombined } from './combined.ts';
 import { readDjiSrt } from './dji-srt.ts';
@@ -14,12 +15,18 @@ export const activityFormats: ActivityFormat[] = [
   { name: 'GPX', extensions: ['.gpx'], read: readGpx },
   { name: 'DJI subtitle track', extensions: ['.srt'], read: readDjiSrt },
   { name: 'Combined track', extensions: [COMBINED_EXTENSION], read: readCombined },
-  { name: 'GPS inside a drone video', extensions: ['.mp4', '.mov'], read: path => readDjmdTrack(path, clipClockTime(path)) },
+  { name: 'GPS inside a video', extensions: ['.mp4', '.mov'], read: readVideoGps },
 ];
+
+function readVideoGps(path: string): TrackPoint[] {
+  return findGpmfStream(path) != null ? gpsTrack(readPayloads(path)) : readDjmdTrack(path, clipClockTime(path));
+}
 
 /** What sort of activity a file records, which decides the layout it starts with. */
 export function activityKind(path: string): ActivityKind {
   const extension = extname(path).toLowerCase();
+  // A GoPro could be on anything, whereas other video with GPS inside is from a drone.
+  if (/^\.(mp4|mov)$/.test(extension) && findGpmfStream(path) != null) return 'other';
   const byFile = activityForExtension(extension);
   if (byFile) return byFile;
   if (extension === '.gpx') return gpxActivity(readFileSync(path, 'utf8'));

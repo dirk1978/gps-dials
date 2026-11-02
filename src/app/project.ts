@@ -1,4 +1,5 @@
 import type { Template } from '../overlay/template.ts';
+import type { VideoSettings } from '../overlay/video-settings.ts';
 import { normaliseTemplate } from '../overlay/template.ts';
 import type { SessionResult } from '../sync/engine.ts';
 import type { FolderClip, FolderTrack } from './folder.ts';
@@ -20,6 +21,9 @@ export interface ProjectFile {
   format: string;
   activeTrack: string | null;
   activeClip: string | null;
+  /** What's kept of each clip in the finished video. */
+  cuts?: Record<string, { from: number; to: number | null; skip: boolean }>;
+  video?: Partial<VideoSettings>;
 }
 
 /** Accepts a saved project, or explains why it can't be opened. */
@@ -40,6 +44,8 @@ export function parseProject(raw: unknown): ProjectFile {
     format: String(p.format ?? 'png-alpha'),
     activeTrack: p.activeTrack ?? null,
     activeClip: p.activeClip ?? null,
+    cuts: p.cuts ?? {},
+    video: p.video ?? {},
   };
 }
 

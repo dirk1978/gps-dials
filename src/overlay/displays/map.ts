@@ -79,10 +79,15 @@ export const map: DisplayDef = {
     // The credit is a condition of using the map, so it stays on unless there is no map.
     if (!provider.none && provider.credit) {
       const size = Math.max(9 * unit, box.h * 0.035);
-      setFont(ctx, { ...style, italic: false, font: 'Arial' }, size, false);
+      const creditStyle = { ...style, italic: false, font: 'Arial' };
+      setFont(ctx, creditStyle, size, false);
       ctx.textAlign = 'right';
       ctx.textBaseline = 'bottom';
       const inset = style.mapShape === 'circle' ? box.w * 0.16 : 6 * unit;
+      // It has to stay readable whole, even on a map as narrow as a vertical crop makes it.
+      const room = box.w - inset * 2;
+      const wide = ctx.measureText(provider.credit).width;
+      if (wide > room) setFont(ctx, creditStyle, size * (room / wide), false);
       ctx.lineWidth = 3 * unit;
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
       ctx.strokeText(provider.credit, box.x + box.w - inset, box.y + box.h - (style.mapShape === 'circle' ? box.h * 0.06 : 4 * unit));

@@ -7,8 +7,11 @@ import '@fontsource/barlow-condensed/latin-700-italic.css';
 import './styles.css';
 import { createCompareView, type CompareApi, type SourceItem } from './compare-view.ts';
 import { createEditor } from './editor.ts';
+import { createExportView, type Cut, type VideoPlan } from './export-view.ts';
 import type { ClipSensors } from '../../devices/types.ts';
-import type { ChannelId } from '../../overlay/channels.ts';
+import { allDials } from '../../activities/showcase.ts';
+import { CHANNELS, type ChannelId } from '../../overlay/channels.ts';
+import type { VideoCodec, VideoSettings } from '../../overlay/video-settings.ts';
 import type { ActivityKind } from '../../activity/types.ts';
 import { clipStartFromPin, indexAtTime, nearestIndex, positionAt, type TrackColumns } from '../../sync/timeline.ts';
 import type { SessionResult, SyncResult } from '../../sync/engine.ts';
@@ -18,9 +21,9 @@ import { layoutFor } from '../../overlay/presets.ts';
 import { normaliseTemplate, type Template } from '../../overlay/template.ts';
 import type { FolderClip, FolderTrack } from '../folder.ts';
 import { projectName, type ProjectFile } from '../project.ts';
-import type { BatchProgress, OverlayBatch } from '../overlay-queue.ts';
+import type { BatchProgress, OverlayBatch, VideoBatch, VideoItem } from '../overlay-queue.ts';
 
-type Mode = 'sync' | 'design' | 'compare';
+type Mode = 'sync' | 'design' | 'compare' | 'export';
 
 interface Clip {
   path: string;
@@ -65,6 +68,7 @@ declare global {
       pickFile(kind: 'clip' | 'track'): Promise<string | null>;
       pickFolder(): Promise<string | null>;
       scanFolder(dir: string): Promise<{ clips: FolderClip[]; tracks: FolderTrack[] }>;
+      tracksNear(clip: string, clockTime: number): Promise<FolderTrack[]>;
       loadTrack(path: string): Promise<Track>;
       loadClip(path: string): Promise<Clip>;
       /** Resolves to null if it was cancelled. */
@@ -92,6 +96,10 @@ declare global {
       exportLayout(template: Template): Promise<string | null>;
       exportOverlays(batch: OverlayBatch): Promise<{ done: number; failed: number; cancelled: boolean; outDir: string; missingTiles: number }>;
       cancelOverlays(): Promise<void>;
+      videoCodecs(): Promise<{ codec: VideoCodec; label: string }[]>;
+      videoPlan(item: VideoItem, settings: VideoSettings): Promise<VideoPlan>;
+      pickVideoSave(name: string): Promise<string | null>;
+      exportVideo(batch: VideoBatch): Promise<{ done: number; failed: number; cancelled: boolean; missingTiles: number; outPath: string }>;
       onOverlayProgress(listener: (progress: BatchProgress) => void): void;
       getMapToken(): Promise<string>;
       setMapToken(token: string): Promise<void>;
@@ -104,6 +112,7 @@ declare global {
       openFolder(dir: string): Promise<void>;
       selectClip(path: string): Promise<void>;
       generate(options?: { outDir?: string; limit?: number }): Promise<void>;
+      exportVideo(outPath?: string): Promise<void>;
       saveProjectTo(path: string): Promise<boolean>;
       openProject(path?: string): Promise<void>;
       newProject(): Promise<void>;
@@ -164,6 +173,7 @@ let overlayData: OverlayData | null = null;
 let lastOverlayDraw = 0;
 let exporting = false;
 const exportProgress = new Map<string, BatchProgress>();
+let videoProgress: (() => void) | null = null;
 let template: Template = layoutFor('cycling');
 let syncing = false;
 /** Tracks recorded by a drone along with one clip, in its subtitles or inside the video. */
@@ -365,6 +375,29 @@ function followVideo(): void {
   renderTrackPosition();
 }
 
+/** Where the finished frame sits over the picture, which is smaller than the picture if it's cropped. */
+function previewFrame(): { left: number; top: number; cssWidth: number; cssHeight: number; aspect: number; cropped: boolean } | null {
+  if (!clip || !video.videoWidth) return null;
+  const sideways = rotation() % 180 !== 0;
+  const aspect = sideways ? video.videoHeight / video.videoWidth : video.videoWidth / video.videoHeight;
+  const stage = $('video-stage');
+  const pictureWidth = Math.min(stage.clientWidth, stage.clientHeight * aspect);
+  const pictureHeight = pictureWidth / aspect;
+  const chosen = mode === 'design' || mode === 'export' ? exportView.aspect() : null;
+  const shape = chosen ?? aspect;
+  const cssWidth = Math.min(pictureWidth, pictureHeight * shape);
+  const cssHeight = cssWidth / shape;
+  const { cropX, cropY } = exportView.settings();
+  return {
+    left: (stage.clientWidth - pictureWidth) / 2 + (pictureWidth - cssWidth) * cropX,
+    top: (stage.clientHeight - pictureHeight) / 2 + (pictureHeight - cssHeight) * cropY,
+    cssWidth,
+    cssHeight,
+    aspect: shape,
+    cropped: chosen != null,
+  };
+}
+
 /** Same drawing code as the export, sized to sit exactly over the picture. */
 function renderOverlayPreview(): void {
   const canvas = $<HTMLCanvasElement>('overlay');
@@ -373,23 +406,28 @@ function renderOverlayPreview(): void {
     overlayData = prepareOverlayData(track.columns, template.gradientSpan, template.launchSpeed);
   }
   const start = clipStart ?? (mode === 'design' ? designStart() : null);
-  const show = ($<HTMLInputElement>('show-dials').checked || mode === 'design') && start != null && clip && overlayData && video.videoWidth > 0;
-  if (!show || start == null || !clip || !overlayData) {
+  const finished = exportView.settings();
+  const wanted = mode === 'export' ? finished.kind === 'overlays' || finished.dials : $<HTMLInputElement>('show-dials').checked || mode === 'design';
+  const show = wanted && start != null && clip && overlayData && video.videoWidth > 0;
+  const frame = previewFrame();
+  const shade = $('crop-shade');
+  shade.hidden = !frame?.cropped;
+  if (frame) {
+    canvas.style.left = shade.style.left = `${frame.left}px`;
+    canvas.style.top = shade.style.top = `${frame.top}px`;
+    canvas.style.width = shade.style.width = `${frame.cssWidth}px`;
+    canvas.style.height = shade.style.height = `${frame.cssHeight}px`;
+  }
+  if (!show || start == null || !clip || !overlayData || !frame) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     return;
   }
-  const sideways = rotation() % 180 !== 0;
-  const aspect = sideways ? video.videoHeight / video.videoWidth : video.videoWidth / video.videoHeight;
-  const stage = $('video-stage');
-  const cssWidth = Math.min(stage.clientWidth, stage.clientHeight * aspect);
-  const width = 1920;
-  const height = Math.round(width / aspect);
+  const width = frame.aspect >= 1 ? 1920 : 1080;
+  const height = Math.round(width / frame.aspect);
   if (canvas.width !== width || canvas.height !== height) {
     canvas.width = width;
     canvas.height = height;
   }
-  canvas.style.width = `${cssWidth}px`;
-  canvas.style.height = `${cssWidth / aspect}px`;
   ctx.clearRect(0, 0, width, height);
   drawFrame(ctx as unknown as Ctx, {
     width,
@@ -442,11 +480,15 @@ function pictureRect(): { left: number; top: number; width: number; height: numb
   const stage = $('video-stage');
   if (!clip || !canvas.clientWidth) return null;
   return {
-    left: (stage.clientWidth - canvas.clientWidth) / 2,
-    top: (stage.clientHeight - canvas.clientHeight) / 2,
+    left: canvas.offsetLeft,
+    top: canvas.offsetTop,
     width: canvas.clientWidth,
     height: canvas.clientHeight,
   };
+}
+
+function channelsWithData(): Set<ChannelId> | null {
+  return overlayData ? new Set([...overlayData.available, ...Object.keys(clipSensors?.series ?? {}) as ChannelId[]]) : null;
 }
 
 const editor = createEditor({
@@ -458,12 +500,42 @@ const editor = createEditor({
   },
   pictureRect,
   redraw: renderOverlayPreview,
-  channelsWithData: () => overlayData ? new Set([...overlayData.available, ...Object.keys(clipSensors?.series ?? {}) as ChannelId[]]) : null,
+  channelsWithData,
   status: setStatus,
   saveWorkingCopy: t => {
     void api.saveWorkingCopy(t);
     markDirty();
   },
+});
+
+const exportView = createExportView({
+  clips: () => {
+    const list = clipsForTrack();
+    return list.length ? list : folderClips;
+  },
+  current: () => clip,
+  position: () => video.currentTime,
+  items: kept => {
+    const list = clipsForTrack().length ? clipsForTrack() : folderClips;
+    return list.flatMap(c => {
+      const part = kept(c);
+      if (!part) return [];
+      const start = sessionResults.get(c.path)?.clipStart ?? (c.path === clip?.path ? clipStart : null);
+      return [{ clip: c.path, clipStart: start, ...part, manualRotation: c.path === clip?.path ? manualRotation : manualRotations.get(c.path) ?? 0, autoRotate: $<HTMLInputElement>('auto-rotate').checked }];
+    });
+  },
+  canHaveDials: () => sessionResults.size > 0 || clipStart != null,
+  plan: (item, settings) => api.videoPlan(item, settings),
+  codecs: () => api.videoCodecs(),
+  run: runVideoExport,
+  cancel: () => api.cancelOverlays(),
+  changed: renderOverlayPreview,
+  clipsChanged: () => {
+    renderClipList();
+    renderGenerateButton();
+  },
+  edited: markDirty,
+  clock: seconds => clockText(seconds, true),
 });
 
 /** Every recording that overlaps the current one in time. */
@@ -495,12 +567,14 @@ function setMode(next: Mode): void {
   mode = next;
   document.body.classList.toggle('mode-design', next === 'design');
   document.body.classList.toggle('mode-compare', next === 'compare');
-  for (const name of ['sync', 'design', 'compare'] as Mode[]) {
+  document.body.classList.toggle('mode-export', next === 'export');
+  for (const name of ['sync', 'design', 'compare', 'export'] as Mode[]) {
     $(`tab-${name}`).setAttribute('aria-pressed', String(name === next));
   }
   $('video-pane').hidden = next === 'compare';
   $('map-pane').hidden = next !== 'sync';
-  $('clip-panel').hidden = next === 'compare' || (next === 'design' ? true : folderTracks.length === 0);
+  $('clip-panel').hidden = next === 'compare' || next === 'design' || (next === 'export' ? folderClips.length === 0 : folderTracks.length === 0);
+  $('export-panel').hidden = next !== 'export';
   $('layers-panel').hidden = next !== 'design';
   $('inspector').hidden = next !== 'design';
   $('compare-pane').hidden = next !== 'compare';
@@ -508,6 +582,11 @@ function setMode(next: Mode): void {
   renderOverlayPreview();
   if (next === 'sync') map.invalidateSize();
   if (next === 'compare') compareView.show().catch(fail);
+  if (next === 'export') {
+    exportView.show().catch(fail);
+    if (!clip) setStatus('Open a folder or video to export it.');
+  }
+  renderClipList();
   if (next === 'design') {
     editor.refresh();
     if (!clip) setStatus('Open a folder or video to design over your own footage.');
@@ -578,6 +657,12 @@ function wireLayoutTools(): void {
     editor.replace(layoutFor(track?.kind ?? 'cycling', overlayData?.available), true);
     setStatus(`Using the ${template.name} layout. It will change to suit whatever activity you open.`);
   });
+  $('layout-all').addEventListener('click', () => {
+    const data = channelsWithData() ?? new Set(CHANNELS.map(c => c.id));
+    const next = allDials(track?.kind ?? 'cycling', data, previewFrame()?.aspect);
+    editor.replace(next);
+    setStatus(`Loaded ${next.widgets.length} dials as examples. Remove any you don't want and move the rest. Undo brings back your layout.`);
+  });
   $('undo').addEventListener('click', () => editor.undo());
   $('redo').addEventListener('click', () => editor.redo());
 }
@@ -595,9 +680,12 @@ function tick(now: number): void {
   requestAnimationFrame(tick);
 }
 
+/** Synced clips still ticked on the Export tab. */
+const overlayResults = () => [...sessionResults.values()].filter(r => !exportView.cutFor(r.path).skip);
+
 function renderGenerateButton(): void {
   const button = $<HTMLButtonElement>('generate');
-  const count = sessionResults.size;
+  const count = overlayResults().length;
   button.disabled = !exporting && count === 0;
   button.textContent = exporting ? 'Cancel' : count > 0 ? `Generate ${count} overlay${count === 1 ? '' : 's'}` : 'Generate overlays';
 }
@@ -606,7 +694,57 @@ function reportExport(): void {
   const all = [...exportProgress.values()];
   const finished = all.filter(p => p.state !== 'running').length;
   const active = all.filter(p => p.state === 'running').map(p => `${(p.fraction * 100).toFixed(0)}%`).join(', ');
-  setStatus(`Generated ${finished} of ${sessionResults.size}${active ? ` (working on ${active})` : ''}`);
+  const total = overlayResults().length;
+  setStatus(`Generated ${finished} of ${total}${active ? ` (working on ${active})` : ''}`);
+  showExportProgress(all.reduce((sum, p) => sum + p.fraction, 0) / Math.max(1, total), 'Generating');
+}
+
+async function runVideoExport(items: VideoItem[], settings: VideoSettings, chosenPath?: string): Promise<void> {
+  if (items.length === 0) return;
+  const single = settings.join || items.length === 1;
+  const outPath = chosenPath ?? (single
+    ? await api.pickVideoSave(`${projectTitle === 'Untitled project' ? 'GPS Dials video' : projectTitle}.mp4`)
+    : await api.pickFolder());
+  if (!outPath) return;
+  if (projectPath && dirty) await saveProject();
+  exporting = true;
+  exportProgress.clear();
+  const total = items.reduce((sum, i) => sum + i.to - i.from, 0);
+  const lengths = new Map(items.map((i, n) => [`${i.clip}#${n}`, i.to - i.from]));
+  videoProgress = () => {
+    const made = [...exportProgress.values()].reduce((sum, p) => sum + (lengths.get(p.clip) ?? 0) * p.fraction, 0);
+    setStatus(`Exporting ${((made / total) * 100).toFixed(0)}%`);
+    showExportProgress(made / total);
+  };
+  const started = performance.now();
+  videoProgress();
+  try {
+    const result = await api.exportVideo({ items, trackPath: track?.path ?? null, template, settings, outPath });
+    const minutes = ((performance.now() - started) / 60000).toFixed(1);
+    const reason = [...exportProgress.values()].find(p => p.state === 'failed')?.error;
+    const blank = result.missingTiles ? ` ${result.missingTiles} map images couldn't load, so parts of a map are blank.` : '';
+    if (result.cancelled) setStatus('Export cancelled. Unfinished files were removed.');
+    else if (result.failed) setStatus(`Export failed${reason ? `: ${reason}` : ''}`);
+    else setStatus(`Exported in ${minutes} min to ${result.outPath}.${blank}`);
+  } catch (error) {
+    fail(error);
+  } finally {
+    exporting = false;
+    videoProgress = null;
+    hideExportProgress();
+  }
+}
+
+function showExportProgress(fraction: number, verb = 'Exporting'): void {
+  $('sync-detail').hidden = true;
+  $('sync-progress').hidden = false;
+  $('sync-progress-text').textContent = `${verb} (${(fraction * 100).toFixed(0)}%)`;
+  $('sync-progress-bar').style.width = `${fraction * 100}%`;
+}
+
+function hideExportProgress(): void {
+  $('sync-progress').hidden = true;
+  $('sync-detail').hidden = false;
 }
 
 async function generateOverlays(options: { outDir?: string; limit?: number } = {}): Promise<void> {
@@ -616,7 +754,7 @@ async function generateOverlays(options: { outDir?: string; limit?: number } = {
     return;
   }
   if (!track) return;
-  const items = [...sessionResults.values()].slice(0, options.limit ?? Infinity).map(r => ({
+  const items = overlayResults().slice(0, options.limit ?? Infinity).map(r => ({
     clip: r.path,
     clipStart: r.clipStart,
     extraRotation: r.path === clip?.path ? (rotation() - clip.fileRotation + 360) % 360 : manualRotations.get(r.path) ?? 0,
@@ -640,6 +778,7 @@ async function generateOverlays(options: { outDir?: string; limit?: number } = {
     fail(error);
   } finally {
     exporting = false;
+    hideExportProgress();
     renderGenerateButton();
   }
 }
@@ -746,6 +885,8 @@ function collectProject(): ProjectFile {
     format: $<HTMLSelectElement>('overlay-format').value,
     activeTrack: track?.path ?? null,
     activeClip: pendingClip ?? clip?.path ?? null,
+    cuts: exportView.cuts(),
+    video: exportView.settings(),
   };
 }
 
@@ -815,6 +956,7 @@ async function loadProject(path: string): Promise<void> {
     for (const [key, value] of Object.entries(project.autoStarts)) autoStarts.set(key, value);
     for (const [key, value] of Object.entries(project.manualRotations)) manualRotations.set(key, value);
     editor.replace(project.template, true);
+    exportView.restore((project.cuts ?? {}) as Record<string, Cut>, project.video ?? {});
     $<HTMLSelectElement>('overlay-format').value = project.format;
     $<HTMLSelectElement>('track-select').replaceChildren(...folderTracks.map(t => {
       const option = document.createElement('option');
@@ -880,7 +1022,7 @@ async function runAutoSync(): Promise<void> {
   syncing = true;
   button.textContent = 'Cancel';
   const started = performance.now();
-  setStatus('Matching the camera\'s movement to the track');
+  showSyncProgress(0, 1);
   try {
     const seconds = () => ((performance.now() - started) / 1000).toFixed(0);
     const day = clipsForTrack();
@@ -925,8 +1067,20 @@ async function runAutoSync(): Promise<void> {
     fail(error);
   } finally {
     syncing = false;
+    $('sync-progress').hidden = true;
+    $('sync-detail').hidden = false;
     button.textContent = clipsForTrack().length > 1 ? 'Auto-sync all clips' : 'Auto-sync';
   }
+}
+
+/** Sits by the sync buttons, because the status line in the header runs out of room. */
+function showSyncProgress(done: number, total: number): void {
+  $('sync-detail').hidden = true;
+  $('sync-progress').hidden = false;
+  const percent = Math.round((done / total) * 100);
+  const clipNumber = Math.min(total, Math.floor(done) + 1);
+  $('sync-progress-text').textContent = total > 1 ? `Syncing clip ${clipNumber} of ${total} (${percent}%)` : `Syncing (${percent}%)`;
+  $('sync-progress-bar').style.width = `${percent}%`;
 }
 
 /** The total clockwise turn on screen. */
@@ -978,6 +1132,16 @@ function renderClipList(): void {
     button.append(name, length, state);
     if (c.path === (pendingClip ?? clip?.path)) button.setAttribute('aria-current', 'true');
     button.addEventListener('click', () => { void selectClip(c.path); });
+    if (mode === 'export') {
+      const include = document.createElement('input');
+      include.type = 'checkbox';
+      include.checked = !exportView.cutFor(c.path).skip;
+      include.setAttribute('aria-label', `Include ${c.name}`);
+      include.addEventListener('change', () => exportView.setSkip(c.path, !include.checked));
+      item.className = 'export-row';
+      length.textContent = clockText(exportView.keptLength(c));
+      item.append(include);
+    }
     item.append(button);
     return item;
   });
@@ -1185,6 +1349,7 @@ async function loadClip(path: string): Promise<void> {
   renderVideoPosition();
   renderTrackPosition();
   renderClipList();
+  if (mode === 'export') exportView.render();
   const fromDay = sessionResults.get(loaded.path);
   if (fromDay) applySessionResult(fromDay);
   else applySaved();
@@ -1192,11 +1357,43 @@ async function loadClip(path: string): Promise<void> {
   setStatus(loaded.proxyMethod === 'cached' ? '' : `Preview built in ${loaded.proxySeconds.toFixed(0)} s (${loaded.proxyMethod})`);
 }
 
+function trackCovers(loaded: Clip): boolean {
+  if (!track) return false;
+  const { t } = track.columns;
+  return loaded.clockTime >= t[0] - TRACK_MATCH_MARGIN_S && loaded.clockTime <= t[t.length - 1] + TRACK_MATCH_MARGIN_S;
+}
+
+/** A video opened on its own looks around it for the activity it belongs to. */
+async function findTrackFor(loaded: Clip): Promise<void> {
+  setStatus('Looking for a matching GPS file');
+  const near = await api.tracksNear(loaded.path, loaded.clockTime);
+  if (near.length === 0) {
+    setStatus('No matching FIT or GPX file nearby. Use Add GPS file to choose one.');
+    return;
+  }
+  const known = new Set(folderTracks.map(t => t.path));
+  const fresh = near.filter(t => !known.has(t.path));
+  folderTracks = [...folderTracks, ...fresh];
+  $<HTMLSelectElement>('track-select').append(...fresh.map(t => {
+    const option = document.createElement('option');
+    option.value = t.path;
+    option.textContent = trackLabel(t);
+    return option;
+  }));
+  document.body.classList.add('has-folder');
+  await loadTrack(near[0].path);
+  setMode(mode);
+  renderClipList();
+  setStatus(`Found ${near[0].name}`);
+}
+
 async function loadPaths(paths: string[]): Promise<void> {
   try {
-    for (const path of paths) {
-      if (/\.(fit|srt)$/i.test(path)) await loadTrack(path);
-      else await loadClip(path);
+    const tracks = paths.filter(path => /\.(fit|gpx|srt)$/i.test(path));
+    for (const path of tracks) await loadTrack(path);
+    for (const path of paths.filter(p => !tracks.includes(p))) {
+      await loadClip(path);
+      if (clip && !trackCovers(clip)) await findTrackFor(clip);
     }
   } catch (error) {
     fail(error);
@@ -1334,16 +1531,18 @@ document.addEventListener('drop', event => {
 api.onProxyProgress((fraction, path) => {
   if (path === pendingClip) showPreviewStatus(path.split(/[\\/]/).pop()!, fraction);
 });
-api.onSyncProgress((done, total) => setStatus(`Matching clip ${done} of ${total}`));
+api.onSyncProgress((done, total) => { if (syncing) showSyncProgress(done, total); });
 api.onOverlayProgress(progress => {
   exportProgress.set(progress.clip, progress);
-  reportExport();
+  if (videoProgress) videoProgress();
+  else reportExport();
 });
 window.app = {
   loadPaths,
   openFolder,
   selectClip,
   generate: generateOverlays,
+  exportVideo: outPath => exportView.start(outPath),
   saveProjectTo: async path => {
     projectPath = path;
     return saveProject();
@@ -1361,7 +1560,7 @@ window.addEventListener('resize', () => {
   renderRotation();
   editor.renderSelection();
 });
-for (const name of ['sync', 'design', 'compare'] as Mode[]) {
+for (const name of ['sync', 'compare', 'design', 'export'] as Mode[]) {
   $(`tab-${name}`).addEventListener('click', () => setMode(name));
 }
 wireLayoutTools();

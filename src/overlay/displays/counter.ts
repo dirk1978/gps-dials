@@ -25,6 +25,10 @@ export const counter: DisplayDef = {
       if (width > box.w - pad) setFont(ctx, style, size * ((box.w - pad) / width));
       drawText(env, reading, x, box.y + box.h * (hasLabel ? 0.4 : 0.5));
     }
-    if (hasLabel) spacedLabel(env, style.labelText, x, box.y + box.h * 0.8, box.h * 0.15 * style.labelSize, style.mutedColor);
+    if (hasLabel) {
+      // Narrow panels, such as in a vertical crop, need the label smaller to stay inside.
+      const fits = (box.w - pad) / (style.labelText.length * 0.62);
+      spacedLabel(env, style.labelText, x, box.y + box.h * 0.8, Math.min(box.h * 0.15 * style.labelSize, fits), style.mutedColor);
+    }
   },
 };

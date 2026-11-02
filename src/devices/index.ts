@@ -1,6 +1,8 @@
 import { djiAction4 } from './dji-action-4.ts';
 import { djiNeo } from './dji-neo.ts';
+import { djiOther } from './dji-other.ts';
 import { genericVideo } from './generic-video.ts';
+import { gopro } from './gopro.ts';
 import { insta360 } from './insta360.ts';
 import type { ClipSensors, DeviceAdapter } from './types.ts';
 
@@ -8,6 +10,8 @@ import type { ClipSensors, DeviceAdapter } from './types.ts';
 export const devices: DeviceAdapter[] = [
   djiAction4,
   djiNeo,
+  djiOther,
+  gopro,
   insta360,
   genericVideo,
 ];

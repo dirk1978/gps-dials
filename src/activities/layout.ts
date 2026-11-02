@@ -4,6 +4,9 @@ import { THEMES, type DisplayId, type Style, type Swap, type Template, type Them
 /** Data, how to show it, left, top, width, height, any options, and what to show if the file lacks that data. */
 export type Spec = [ChannelId, DisplayId, number, number, number, number, Partial<Style>?, Swap[]?];
 
+/** Data, how to show it, and the options that make it a useful example. */
+export type Example = [ChannelId, DisplayId, Partial<Style>?];
+
 /** Shared sizes, so built-in layouts line up with each other. */
 export const DIAL_W = 0.15;
 export const DIAL_H = 0.2667;

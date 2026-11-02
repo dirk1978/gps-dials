@@ -6,6 +6,17 @@ export const boating: ActivityDef = {
   name: 'Boating',
   fitSports: [15, 19, 23, 32, 37, 41],
   channels: ['speed', 'averageSpeed', 'maxSpeed', 'heading', 'heartRate', 'temperature', 'distance', 'remaining', 'progress', 'latitude', 'longitude', 'rideTime', 'clipTime', 'timeOfDay', 'date'],
+  examples: [
+    ['speed', 'dial'],
+    ['speed', 'arc'],
+    ['heartRate', 'dial'],
+    ['leanAngle', 'tilt', { labelText: 'Heel' }],
+    ['heading', 'tape'],
+    ['speed', 'stats'],
+    ['progress', 'bar'],
+    ['heartRate', 'zones'],
+    ['temperature', 'counter'],
+  ],
   layout: layout('Boating', [
     ['distance', 'map', LEFT, 0.025, MAP_W, MAP_H, { mapMode: 'follow', mapZoom: 15, mapRotate: true, markerStyle: 'arrow' }],
     ['speed', 'dial', RIGHT_DIAL, BOTTOM_DIAL, DIAL_W, DIAL_H, { unit: 'kn', max: 30, labelText: 'Speed' }],

@@ -11,8 +11,9 @@
     <strong class="brand">GPS<span>Dials</span></strong>
     <nav class="tabs" aria-label="Mode">
       <button id="tab-sync" class="tab" aria-pressed="true">Sync</button>
-      <button id="tab-design" class="tab" aria-pressed="false">Design</button>
       <button id="tab-compare" class="tab" aria-pressed="false">Compare sources</button>
+      <button id="tab-design" class="tab" aria-pressed="false">Design</button>
+      <button id="tab-export" class="tab" aria-pressed="false">Export</button>
     </nav>
     <details id="project-menu" class="menu">
       <summary>Project</summary>
@@ -64,6 +65,7 @@
           <button id="layout-export" title="Save this layout to a file you can share">Export</button>
           <button id="layout-reset" title="Go back to the built-in layout">Reset</button>
         </div>
+        <button id="layout-all" title="Fill the picture with every dial this activity can show, as examples. Remove the ones you don't want and move the rest. You can undo this.">Load all dials</button>
       </div>
       <h2>Presets</h2>
       <div id="preset-grid" class="preset-grid"></div>
@@ -84,6 +86,7 @@
     <section class="pane" id="video-pane">
       <div class="stage" id="video-stage">
         <video id="video" preload="auto"></video>
+        <div id="crop-shade" hidden></div>
         <canvas id="overlay" aria-label="Overlay preview"></canvas>
         <div id="editor-layer"></div>
         <div id="preview-status" class="preview-status" role="status" hidden>
@@ -97,6 +100,13 @@
       <div class="controls">
         <input id="video-scrub" class="scrub" type="range" min="0" max="1" step="0.01" value="0" aria-label="Video position" disabled>
         <span id="video-time" class="time">0:00.0 / 0:00</span>
+      </div>
+      <div id="trim-bar" class="trim-bar" hidden>
+        <span class="trim-track"><span id="trim-kept"></span></span>
+        <button id="trim-start" title="Start this clip here">Start here</button>
+        <button id="trim-end" title="End this clip here">End here</button>
+        <button id="trim-reset">Keep whole clip</button>
+        <span id="trim-note" class="note"></span>
       </div>
       <div class="buttons">
         <button data-frames="-1" title="Back one frame (,)">&#9664; Frame</button>
@@ -115,6 +125,93 @@
     </aside>
 
     <section id="compare-pane" class="compare" hidden></section>
+
+    <aside id="export-panel" hidden>
+      <h2>Export</h2>
+      <label>What to make
+        <select id="export-kind">
+          <option value="video">Finished video, with the dials on the footage</option>
+          <option value="overlays">Overlay files for your video editor</option>
+        </select>
+      </label>
+      <p id="export-summary" class="export-note"></p>
+      <div id="export-overlay-options" class="export-group" hidden>
+        <label>Format
+          <select id="overlay-format" title="Pick what your editor accepts.">
+            <option value="png-alpha">Transparent for PowerDirector (PNG)</option>
+            <option value="prores-alpha">Transparent for Resolve, Premiere, Final Cut (ProRes)</option>
+            <option value="chroma-h264">Green screen for any editor (H.264)</option>
+          </select>
+        </label>
+        <p class="export-note">One overlay for each ticked clip that's synced, the same length as the clip, in an overlays folder beside your clips. Transparent files take about 0.3 to 0.5 GB a minute at 4K. Green screen files are tiny, and you key out the green in your editor.</p>
+        <button id="generate" class="primary export-go" disabled>Generate overlays</button>
+      </div>
+      <div id="export-video-options" class="export-group">
+      <label>Frame shape
+        <select id="export-frame">
+          <option value="original">Same as the video</option>
+          <option value="16:9">16:9 widescreen</option>
+          <option value="9:16">9:16 vertical</option>
+          <option value="1:1">1:1 square</option>
+          <option value="4:5">4:5 portrait</option>
+          <option value="4:3">4:3</option>
+          <option value="21:9">21:9 cinema</option>
+        </select>
+      </label>
+      <div id="export-crop" class="export-pair" hidden>
+        <label>Crop across <input id="export-cropX" type="range" min="0" max="1" step="0.01"></label>
+        <label>Crop up and down <input id="export-cropY" type="range" min="0" max="1" step="0.01"></label>
+      </div>
+      <label>Resolution
+        <select id="export-resolution">
+          <option value="original">Same as the video</option>
+          <option value="2160">4K (2160p)</option>
+          <option value="1440">1440p</option>
+          <option value="1080">1080p</option>
+          <option value="720">720p</option>
+          <option value="custom">Custom</option>
+        </select>
+      </label>
+      <div id="export-custom-size" class="export-pair" hidden>
+        <label>Width <input id="export-customWidth" type="number" min="16" max="7680" step="2"></label>
+        <label>Height <input id="export-customHeight" type="number" min="16" max="7680" step="2"></label>
+      </div>
+      <label>Frame rate
+        <select id="export-fps">
+          <option value="original">Same as the video</option>
+          <option value="24">24 fps</option>
+          <option value="25">25 fps</option>
+          <option value="30">30 fps</option>
+          <option value="50">50 fps</option>
+          <option value="60">60 fps</option>
+          <option value="custom">Custom</option>
+        </select>
+      </label>
+      <label id="export-custom-fps" hidden>Frames a second <input id="export-customFps" type="number" min="1" max="240" step="any"></label>
+      <label>Format
+        <select id="export-codec"></select>
+      </label>
+      <label>Data rate
+        <select id="export-bitrate">
+          <option value="original">Same quality as the video</option>
+          <option value="100">100 Mbps</option>
+          <option value="60">60 Mbps</option>
+          <option value="40">40 Mbps</option>
+          <option value="20">20 Mbps</option>
+          <option value="10">10 Mbps</option>
+          <option value="5">5 Mbps</option>
+          <option value="custom">Custom</option>
+        </select>
+      </label>
+      <label id="export-custom-bitrate" hidden>Mbps <input id="export-customBitrate" type="number" min="1" max="1000" step="any"></label>
+      <label class="check"><input id="export-dials" type="checkbox"> Add the dials</label>
+      <p id="export-no-dials" class="export-note warn" hidden>Sync your clips first to add dials. Clips that aren't synced export without them.</p>
+      <label class="check"><input id="export-audio" type="checkbox"> Keep the sound</label>
+      <label class="check"><input id="export-join" type="checkbox"> Join clips into one video</label>
+      <p id="export-plan" class="export-note"></p>
+      <button id="export-video" class="primary export-go">Export video</button>
+      </div>
+    </aside>
 
     <section class="pane" id="map-pane">
       <div class="stage">
@@ -139,6 +236,10 @@
     <div class="sync-state">
       <span id="sync-badge" class="badge">Not synced</span>
       <span id="sync-detail">Open a video and a track to begin.</span>
+      <div id="sync-progress" class="sync-progress" role="status" hidden>
+        <span id="sync-progress-text"></span>
+        <span class="preview-track"><span id="sync-progress-bar"></span></span>
+      </div>
     </div>
     <span class="grow"></span>
     <span id="nudge" hidden>
@@ -150,13 +251,6 @@
     <button id="apply-shift" hidden></button>
     <button id="auto-sync" disabled>Auto-sync</button>
     <button id="lock" disabled>Match these two points</button>
-    <span class="grow"></span>
-    <select id="overlay-format" aria-label="Overlay format" title="Pick what your editor accepts. Transparent files take about 0.3 to 0.5 GB a minute at 4K. Green screen files are tiny, and you key out the green in your editor.">
-      <option value="png-alpha">Transparent for PowerDirector (PNG)</option>
-      <option value="prores-alpha">Transparent for Resolve, Premiere, Final Cut (ProRes)</option>
-      <option value="chroma-h264">Green screen for any editor (H.264)</option>
-    </select>
-    <button id="generate" class="primary" disabled title="Makes one overlay video per clip for your editor, in an overlays folder beside your clips.">Generate overlays</button>
   </footer>
 
   <dialog id="layout-dialog">

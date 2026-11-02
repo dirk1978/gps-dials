@@ -22,10 +22,10 @@ The downloads aren't commercially code-signed yet, so your system will warn you.
 
 ## The workflow
 
-1. Copy a day's videos and FIT files into a folder and open it.
+1. Copy a day's videos and FIT files into a folder and open it. You can also open one video, and the app looks in its folder for the FIT or GPX file that matches.
 2. The app finds the matching activity and syncs every clip.
 3. Check each clip beside the map and correct any that are off.
-4. Press Generate to get one overlay file per video, in an `overlays` folder beside your clips. Each one is named after its clip and fits it exactly, so it drops straight onto the track above it.
+4. On the **Export** tab, make a finished video, or generate one overlay file per video for your editor, in an `overlays` folder beside your clips. Each overlay is named after its clip and fits it exactly, so it drops straight onto the track above it.
 
 ![The Sync tab, with a list of synced clips, the video and its position on the map](docs/screenshots/sync.jpg)
 
@@ -36,6 +36,17 @@ The downloads aren't commercially code-signed yet, so your system will warn you.
 | Green screen (H.264) | Any editor with a chroma key | About 4 MB a minute |
 
 Transparent overlays run at 10 frames a second, the rate the dials update, which editors place correctly by time. Storing every frame would make them five times larger.
+
+## Export a finished video
+
+Everything leaves the app from the **Export** tab, as overlay files for your editor or a finished video. Don't want another editor in the way? Choose a finished video and the app trims and joins your clips, burns the dials in and writes an MP4, using your GPU where it can.
+
+- **Trim:** go to a point in a clip and press **Start here** or **End here**, and untick any clips you don't want.
+- **Frame shape:** keep the original, or crop to 16:9, 9:16, 1:1, 4:5, 4:3 or 21:9, and slide the crop to frame the shot. Dials are placed in the cropped frame, so nothing gets cut off, and the Design tab shows the same shape.
+- **Quality:** choose the resolution, frame rate, format (H.264, H.265 or AV1, where your PC can write them) and data rate, or keep them the same as the video.
+- **Output:** one joined video or one per clip, with or without the sound.
+
+HDR footage comes out as standard dynamic range.
 
 ## Design your own overlay
 
@@ -56,6 +67,8 @@ The data lists show what matters for your activity first.
 The app recognises cycling, running, drone, boating and flying recordings and starts with a layout to suit. Each gauge has a next best choice, so where your file has no power data, for example, the space shows G-force instead. If you change a layout, the app leaves it as it is. Heart rate and power zones come from your own max heart rate and FTP, set in the Theme panel.
 
 Lean angle and G-force are worked out from GPS, which updates about once a second, so they smooth out quick movements. Where a camera records its own orientation, its reading is used instead. On a helmet, that follows your head rather than the bike. Drones report which way they're pointing, so a drone's compass shows that rather than its direction of travel.
+
+Not sure what's possible? **Load all dials** fills the picture with every gauge your activity and file have data for, as worked examples. Remove the ones you don't want and rearrange the rest, or press Undo to go back.
 
 Start from one of the built-in presets, or from nothing. Drag and resize on the picture, with snapping to the centre and to other widgets. Each widget has its own colours, thickness, size, opacity, fonts, scale, ticks, colour zones and more, and a theme sets everything you haven't changed yourself. More than 40 themes are built in, grouped by activity and feel. Layouts can be saved and shared as files.
 
@@ -109,15 +122,20 @@ npm run sync -- path/to/clip.mp4 path/to/activity.fit
 | Device | Motion data | Camera data | Status |
 |---|---|---|---|
 | DJI Osmo Action 4 | Orientation track, plus vibration | Lean, pitch, ISO, shutter, white balance | Tested on a 72-clip ride, with Garmin and Wahoo tracks |
-| Insta360 GO 3 | Picture motion | Shutter | Tested on one 26-minute clip |
 | DJI Neo | Its own GPS track, so sync is exact | Heading, roll, pitch, ISO, shutter, aperture, white balance | Tested on one flight, with and without its `.SRT` file |
-| Anything else | Picture motion | None | Should work; not tested |
+| Insta360 GO 3 | Picture motion | Shutter | Tested on one 26-minute clip |
+| GoPro (HERO5 Black and later) | GPS time, so sync is exact where the clip has a fix. Otherwise its gyro | ISO, shutter, white balance | Built from GoPro's published format; not yet tested on real footage |
+| Other DJI cameras | The Action 4's orientation track if it fits, otherwise picture motion | Settings where the layout matches | Should work; not tested |
+| Other Insta360 cameras | Picture motion | Shutter | Should work; not tested |
+| iPhone, Android and anything else | Picture motion | None | Should work; not tested. Best when the phone is mounted, because picture motion follows the phone rather than the route |
+
+GoPro models without GPS, such as the HERO12 Black, use their gyro instead. Lean angle and pitch on a GoPro come from GPS, as they do for other cameras without an orientation reading. Long GoPro recordings split into chapters are treated as separate clips.
 
 | Track format | Status |
 |---|---|
 | FIT, including laps | Supported |
 | DJI `.SRT` | Supported |
-| GPS inside a DJI Neo video | Supported |
+| GPS inside a DJI Neo or GoPro video | Supported |
 | GPX, including heart rate, cadence and power | Supported |
 
 ## Add your camera
