@@ -24,6 +24,7 @@
         <button id="project-save-as">Save as</button>
         <p class="menu-heading" id="recent-heading" hidden>Recent</p>
         <div id="recent-list"></div>
+        <button id="project-clear" class="menu-quiet">Clear cache</button>
       </div>
     </details>
     <span id="project-name" class="project-name"></span>
@@ -50,7 +51,7 @@
       <dl class="legend">
         <dt class="good">Matched</dt><dd>Lined up using this clip's own movement.</dd>
         <dt class="warn">Estimated</dt><dd>Too few turns to match, so it uses the camera clock error from nearby matched clips. Check these first.</dd>
-        <dt>By hand</dt><dd>You set it. Auto-sync won't overwrite it.</dd>
+        <dt>By hand</dt><dd>You set it. Auto-sync all clips won't overwrite it.</dd>
       </dl>
     </aside>
 
@@ -249,6 +250,7 @@
       <button data-nudge="1">+1 s</button>
     </span>
     <button id="apply-shift" hidden></button>
+    <button id="auto-sync-clip" title="Sync only the clip that's open. Every other clip stays as it is." hidden>Auto-sync this clip</button>
     <button id="auto-sync" disabled>Auto-sync</button>
     <button id="lock" disabled>Match these two points</button>
   </footer>
@@ -261,6 +263,24 @@
       <div class="dialog-buttons" style="margin-top: 12px">
         <button value="cancel">Cancel</button>
         <button id="layout-confirm" class="primary" value="save">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="cache-dialog">
+    <form method="dialog">
+      <h2>Clear cache</h2>
+      <p>This removes things GPS Dials can make again, then starts afresh with nothing open.</p>
+      <label class="check"><input id="cache-previews" type="checkbox" checked> Video previews <span id="cache-previews-size" class="hint"></span></label>
+      <p class="hint">Small copies for smooth scrubbing. They're rebuilt when you next open each clip, which takes a while.</p>
+      <label class="check"><input id="cache-maps" type="checkbox" checked> Map images <span id="cache-maps-size" class="hint"></span></label>
+      <p class="hint">Downloaded again when they're next needed.</p>
+      <label class="check"><input id="cache-sync" type="checkbox" checked> Sync results <span id="cache-sync-size" class="hint"></span></label>
+      <p class="hint">Forgets where the open clips were matched, including any saved beside them by earlier versions. A saved project keeps its own copy until you sync it again.</p>
+      <p>Your videos, activity files, saved projects, saved layouts, combined tracks and Mapbox token aren't touched. The layout on screen goes back to the default, so save it first if you want to keep it.</p>
+      <div class="dialog-buttons">
+        <button value="cancel">Cancel</button>
+        <button id="cache-confirm" class="primary" value="clear">Clear and start afresh</button>
       </div>
     </form>
   </dialog>

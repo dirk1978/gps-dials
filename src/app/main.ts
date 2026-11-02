@@ -14,6 +14,7 @@ import {
 } from '../compare/compare.ts';
 import { TERRAIN_CREDIT, fetchTerrain } from '../compare/terrain.ts';
 import type { Template } from '../overlay/template.ts';
+import { emptyFolder, folderSize, removeSyncNotes } from './cache.ts';
 import { scanFolder, tracksNear } from './folder.ts';
 import { deleteLayout, importLayout, listLayouts, loadLayout, loadWorkingCopy, saveLayout, saveWorkingCopy } from './layouts.ts';
 import { bestVideoEncoder } from '../overlay/encoders.ts';
@@ -217,6 +218,18 @@ function registerIpc(): void {
   ipcMain.handle('export-video', (event, batch: VideoBatch) => (
     exportVideo(join(__dirname, 'overlay-worker.cjs'), { ...batch, mapToken: readMapToken() }, progress => event.sender.send('overlay-progress', progress))
   ));
+
+  const previewsDir = () => join(app.getPath('userData'), 'proxies');
+  const mapsDir = () => process.env.GPS_DIALS_TILE_CACHE!;
+  ipcMain.handle('cache-sizes', () => ({ previews: folderSize(previewsDir()), maps: folderSize(mapsDir()) }));
+  ipcMain.handle('clear-cache', async (_event, what: { previews: boolean; maps: boolean; clips: string[] }) => {
+    const previews = what.previews ? emptyFolder(previewsDir()) : { freed: 0, left: 0 };
+    const maps = what.maps ? emptyFolder(mapsDir()) : { freed: 0, left: 0 };
+    if (what.previews) proxies.clear();
+    // Maps shown on the Sync tab are held by the browser side, not in the folder.
+    if (what.maps) await session.defaultSession.clearCache();
+    return { freed: previews.freed + maps.freed, left: previews.left + maps.left, notes: removeSyncNotes(what.clips) };
+  });
 
   ipcMain.handle('pick-folder', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog(window, { properties: ['openDirectory'] });

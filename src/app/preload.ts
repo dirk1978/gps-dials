@@ -24,6 +24,8 @@ contextBridge.exposeInMainWorld('gpsDials', {
   checkTerrain: (items: unknown) => ipcRenderer.invoke('check-terrain', items),
   combineSources: (items: unknown, choices: unknown, name: string) => ipcRenderer.invoke('combine-sources', items, choices, name),
   tracksNear: (clip: string, clockTime: number) => ipcRenderer.invoke('tracks-near', clip, clockTime),
+  cacheSizes: () => ipcRenderer.invoke('cache-sizes'),
+  clearCache: (what: unknown) => ipcRenderer.invoke('clear-cache', what),
   listLayouts: () => ipcRenderer.invoke('list-layouts'),
   loadLayout: (name: string) => ipcRenderer.invoke('load-layout', name),
   saveLayout: (name: string, template: unknown) => ipcRenderer.invoke('save-layout', name, template),

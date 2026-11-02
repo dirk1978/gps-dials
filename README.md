@@ -24,7 +24,7 @@ The downloads aren't commercially code-signed yet, so your system will warn you.
 
 1. Copy a day's videos and FIT files into a folder and open it. You can also open one video, and the app looks in its folder for the FIT or GPX file that matches.
 2. The app finds the matching activity and syncs every clip.
-3. Check each clip beside the map and correct any that are off.
+3. Check each clip beside the map and correct any that are off. **Auto-sync this clip** redoes just the one that's open and leaves the rest alone.
 4. On the **Export** tab, make a finished video, or generate one overlay file per video for your editor, in an `overlays` folder beside your clips. Each overlay is named after its clip and fits it exactly, so it drops straight onto the track above it.
 
 ![The Sync tab, with a list of synced clips, the video and its position on the map](docs/screenshots/sync.jpg)
@@ -45,6 +45,8 @@ Everything leaves the app from the **Export** tab, as overlay files for your edi
 - **Frame shape:** keep the original, or crop to 16:9, 9:16, 1:1, 4:5, 4:3 or 21:9, and slide the crop to frame the shot. Dials are placed in the cropped frame, so nothing gets cut off, and the Design tab shows the same shape.
 - **Quality:** choose the resolution, frame rate, format (H.264, H.265 or AV1, where your PC can write them) and data rate, or keep them the same as the video.
 - **Output:** one joined video or one per clip, with or without the sound.
+
+![The Export tab with a clip trimmed and a 9:16 crop shown over the picture, beside the format settings](docs/screenshots/export.jpg)
 
 HDR footage comes out as standard dynamic range.
 
@@ -70,6 +72,12 @@ Lean angle and G-force are worked out from GPS, which updates about once a secon
 
 Not sure what's possible? **Load all dials** fills the picture with every gauge your activity and file have data for, as worked examples. Remove the ones you don't want and rearrange the rest, or press Undo to go back.
 
+![Load all dials, with 38 maps, dials, graphs and readouts filling the picture](docs/screenshots/all-dials.jpg)
+
+Recorded laps have their own gauges. The lap table lists every lap with its time and an average of any data you choose, and marks the current and fastest laps. Lap bars show the shape of the whole activity at a glance.
+
+![A lap table for speed, another for heart rate, lap bars and lap counters over ride footage](docs/screenshots/laps.jpg)
+
 Start from one of the built-in presets, or from nothing. Drag and resize on the picture, with snapping to the centre and to other widgets. Each widget has its own colours, thickness, size, opacity, fonts, scale, ticks, colour zones and more, and a theme sets everything you haven't changed yourself. More than 40 themes are built in, grouped by activity and feel. Layouts can be saved and shared as files.
 
 ![The theme gallery beside an overlay in the Grand tour theme](docs/screenshots/theme.jpg)
@@ -93,6 +101,8 @@ Recorded the same ride on two devices? The **Compare sources** tab shows where t
 ## Projects
 
 The **Project** menu keeps a piece of work together: your clips, GPS sources, sync, corrections, rotations and layout. Save a project, close it, start a new one, and open it again later. The project file only points to your videos, so they stay where they are, and the app tells you if any have moved.
+
+To start completely afresh, **Clear cache** at the bottom of the Project menu removes video previews, downloaded map images and sync results. It shows what each takes up first, and leaves your videos, activity files, saved projects, layouts and Mapbox token alone.
 
 ## What works today
 

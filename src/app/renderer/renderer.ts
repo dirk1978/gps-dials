@@ -14,6 +14,7 @@ import { CHANNELS, type ChannelId } from '../../overlay/channels.ts';
 import type { VideoCodec, VideoSettings } from '../../overlay/video-settings.ts';
 import type { ActivityKind } from '../../activity/types.ts';
 import { clipStartFromPin, indexAtTime, nearestIndex, positionAt, type TrackColumns } from '../../sync/timeline.ts';
+import { fitsTheDay } from '../../sync/consensus.ts';
 import type { SessionResult, SyncResult } from '../../sync/engine.ts';
 import { prepareOverlayData, type OverlayData } from '../../overlay/data.ts';
 import { DISPLAY_FONT, drawFrame, type Ctx } from '../../overlay/draw.ts';
@@ -69,6 +70,8 @@ declare global {
       pickFolder(): Promise<string | null>;
       scanFolder(dir: string): Promise<{ clips: FolderClip[]; tracks: FolderTrack[] }>;
       tracksNear(clip: string, clockTime: number): Promise<FolderTrack[]>;
+      cacheSizes(): Promise<{ previews: number; maps: number }>;
+      clearCache(what: { previews: boolean; maps: boolean; clips: string[] }): Promise<{ freed: number; left: number; notes: number }>;
       loadTrack(path: string): Promise<Track>;
       loadClip(path: string): Promise<Clip>;
       /** Resolves to null if it was cancelled. */
@@ -156,6 +159,7 @@ const autoStarts = new Map<string, number>();
 const manualRotations = new Map<string, number>();
 const PREVIEW_PANEL_DELAY_MS = 150;
 const PROJECT_TO_OPEN = 'gps-dials.project-to-open';
+const CACHE_CLEARED = 'gps-dials.cache-cleared';
 let projectPath: string | null = null;
 let projectTitle = 'Untitled project';
 /** Unsaved changes in the open project. */
@@ -334,6 +338,7 @@ function renderSyncState(detail?: string): void {
   const whole = clipsForTrack().length > 1;
   $<HTMLButtonElement>('auto-sync').disabled = !syncing && !(track && (clip || folderClips.length > 0));
   $('auto-sync').textContent = syncing ? 'Cancel' : whole ? 'Auto-sync all clips' : 'Auto-sync';
+  $('auto-sync-clip').hidden = syncing || !whole || !clip || !track || OWN_TRACK.test(track.path);
   renderApplyShift();
   renderClipLine();
   renderGenerateButton();
@@ -926,6 +931,37 @@ async function startAfresh(nextProject?: string): Promise<void> {
   location.reload();
 }
 
+const sizeText = (bytes: number) => (bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`);
+
+async function openClearCache(): Promise<void> {
+  if (syncing || exporting) {
+    setStatus('Wait for the sync or export to finish first.');
+    return;
+  }
+  const { previews, maps } = await api.cacheSizes();
+  $('cache-previews-size').textContent = `(${sizeText(previews)})`;
+  $('cache-maps-size').textContent = `(${sizeText(maps)})`;
+  const synced = [...sessions.values()].reduce((total, results) => total + results.size, 0);
+  $('cache-sync-size').textContent = `(${synced} ${synced === 1 ? 'clip' : 'clips'})`;
+  $<HTMLDialogElement>('cache-dialog').showModal();
+}
+
+async function clearCache(): Promise<void> {
+  if (!(await canLeaveProject())) return;
+  // Windows won't delete a preview while it's playing.
+  video.pause();
+  video.removeAttribute('src');
+  video.load();
+  const clips = $<HTMLInputElement>('cache-sync').checked ? folderClips.map(c => c.path) : [];
+  const { freed, left } = await api.clearCache({ previews: $<HTMLInputElement>('cache-previews').checked, maps: $<HTMLInputElement>('cache-maps').checked, clips });
+  try {
+    sessionStorage.setItem(CACHE_CLEARED, `Cache cleared, ${sizeText(freed)} freed.${left ? ` ${left} files were in use and are still there.` : ''}`);
+  } catch {
+    // The message is only a courtesy.
+  }
+  await startAfresh();
+}
+
 async function newProject(): Promise<void> {
   if (await canLeaveProject()) await startAfresh();
 }
@@ -1012,7 +1048,7 @@ function restoreSavedResults(): void {
   }
 }
 
-async function runAutoSync(): Promise<void> {
+async function runAutoSync(onlyThisClip = false): Promise<void> {
   if (syncing) {
     await api.cancelSync();
     return;
@@ -1021,6 +1057,7 @@ async function runAutoSync(): Promise<void> {
   const button = $<HTMLButtonElement>('auto-sync');
   syncing = true;
   button.textContent = 'Cancel';
+  $('auto-sync-clip').hidden = true;
   const started = performance.now();
   showSyncProgress(0, 1);
   try {
@@ -1028,7 +1065,7 @@ async function runAutoSync(): Promise<void> {
     const day = clipsForTrack();
     // A drone track belongs to one clip exactly, so it takes the same route as a whole folder.
     const droneClips = OWN_TRACK.test(track.path) ? (clip ? [clip.path] : day.map(c => c.path)) : null;
-    if (droneClips || day.length > 1 || (day.length === 1 && !clip)) {
+    if (droneClips || (!onlyThisClip && (day.length > 1 || (day.length === 1 && !clip)))) {
       const results = await api.autoSync({ clips: droneClips ?? day.map(c => c.path), trackPath: track.path });
       if (!results) {
         setStatus(SYNC_CANCELLED);
@@ -1053,15 +1090,18 @@ async function runAutoSync(): Promise<void> {
         setStatus(SYNC_CANCELLED);
         return;
       }
-      const note = r.confident
-        ? 'Matched from camera movement.'
-        : 'Likely, but another match was close. Play it and check.';
-      sessionResults.set(clip.path, { ...r, path: clip.path, basis: 'own motion' });
+      // A clip with its own GPS time comes back already exact.
+      const others = [...sessionResults.values()].filter(o => o.path !== clip!.path && (o.basis === 'own motion' || o.basis === 'guided by other clips'));
+      const guided = !r.confident && fitsTheDay(r, others);
+      const basis = guided ? 'guided by other clips' : (r as Partial<SessionResult>).basis ?? 'own motion';
+      const sure = r.confident || guided;
+      const note = sure ? BASIS_TEXT[basis] : 'Likely, but another match was close. Play it and check.';
+      sessionResults.set(clip.path, { ...r, path: clip.path, basis, confident: sure });
       autoStarts.set(clip.path, r.clipStart);
       markDirty();
-      applySync(r.clipStart, 'auto', r.confident, `${note} ${describeOffset(r.clipStart)}`);
+      applySync(r.clipStart, 'auto', sure, `${note} ${describeOffset(r.clipStart)}`);
       renderClipList();
-      setStatus(`Matched in ${seconds()} s, r=${r.turnR.toFixed(2)}, lead ${r.lead.toFixed(2)}`);
+      setStatus(onlyThisClip ? `Synced this clip in ${seconds()} s. Other clips were left as they were.` : `Matched in ${seconds()} s, r=${r.turnR.toFixed(2)}, lead ${r.lead.toFixed(2)}`);
     }
   } catch (error) {
     fail(error);
@@ -1069,7 +1109,7 @@ async function runAutoSync(): Promise<void> {
     syncing = false;
     $('sync-progress').hidden = true;
     $('sync-detail').hidden = false;
-    button.textContent = clipsForTrack().length > 1 ? 'Auto-sync all clips' : 'Auto-sync';
+    renderSyncState($('sync-detail').textContent ?? undefined);
   }
 }
 
@@ -1478,9 +1518,12 @@ map.on('click', event => {
 });
 
 $('auto-sync').addEventListener('click', () => { void runAutoSync(); });
+$('auto-sync-clip').addEventListener('click', () => { void runAutoSync(true); });
 $('lock').addEventListener('click', toggleLock);
 const closeMenu = () => { $<HTMLDetailsElement>('project-menu').open = false; };
 $('project-new').addEventListener('click', () => { closeMenu(); void newProject(); });
+$('project-clear').addEventListener('click', () => { closeMenu(); openClearCache().catch(fail); });
+$('cache-confirm').addEventListener('click', () => { clearCache().catch(fail); });
 $('project-open').addEventListener('click', () => { closeMenu(); void openProject(); });
 $('project-save').addEventListener('click', () => { closeMenu(); void saveProject(); });
 $('project-save-as').addEventListener('click', () => { closeMenu(); void saveProject(true); });
@@ -1578,6 +1621,9 @@ void (async () => {
   try {
     pending = sessionStorage.getItem(PROJECT_TO_OPEN);
     sessionStorage.removeItem(PROJECT_TO_OPEN);
+    const cleared = sessionStorage.getItem(CACHE_CLEARED);
+    sessionStorage.removeItem(CACHE_CLEARED);
+    if (cleared) setStatus(cleared);
   } catch {
     pending = null;
   }

@@ -9,6 +9,8 @@ const BIN_S = 3;
 const INLIER_S = 6;
 const MIN_INLIERS = 3;
 const NEIGHBOURS = 5;
+/** As far as a clip may refine the day's clock error using its own motion. */
+const FITS_S = 3;
 
 const median = (values: number[]) => {
   const sorted = [...values].sort((a, b) => a - b);
@@ -43,4 +45,11 @@ export function clockInliers(votes: ClockVote[]): ClockVote[] {
 export function localClockError(time: number, inliers: ClockVote[]): number {
   const nearest = [...inliers].sort((a, b) => Math.abs(a.clockTime - time) - Math.abs(b.clockTime - time)).slice(0, NEIGHBOURS);
   return median(nearest.map(v => v.error));
+}
+
+/** Whether a clip synced on its own lands where the camera clock worked out from other clips says it should. */
+export function fitsTheDay(clip: { clockTime: number; clipStart: number }, others: { clockTime: number; clipStart: number }[]): boolean {
+  const inliers = clockInliers(others.map(o => ({ clockTime: o.clockTime, error: o.clockTime - o.clipStart })));
+  if (inliers.length === 0) return false;
+  return Math.abs(clip.clockTime - localClockError(clip.clockTime, inliers) - clip.clipStart) <= FITS_S;
 }
