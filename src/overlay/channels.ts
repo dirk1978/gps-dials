@@ -8,10 +8,10 @@ export type ChannelId =
   | 'distance' | 'remaining' | 'homeDistance' | 'rideTime' | 'clipTime' | 'timeOfDay'
   | 'progress' | 'averageSpeed' | 'maxSpeed' | 'accelForward' | 'accelLateral' | 'gForce' | 'leanAngle'
   | 'heartZone' | 'powerZone' | 'latitude' | 'longitude' | 'date'
-  | 'lapNumber' | 'lapTime' | 'lastLap' | 'bestLap' | 'splitKm' | 'splitMile' | 'launchTime' | 'cornerSpeed'
+  | 'lapNumber' | 'lapTime' | 'lastLap' | 'bestLap' | 'lapGap' | 'lapDistance' | 'lapSpeed' | 'lapPace' | 'splitKm' | 'splitMile' | 'launchTime' | 'cornerSpeed'
   | 'pitch' | 'iso' | 'shutter' | 'aperture' | 'whiteBalance';
 
-export type ChannelFormat = 'number' | 'duration' | 'clock' | 'compass' | 'date' | 'shutter' | 'aperture';
+export type ChannelFormat = 'number' | 'duration' | 'gap' | 'clock' | 'compass' | 'date' | 'shutter' | 'aperture';
 
 export interface UnitDef {
   id: string;
@@ -38,12 +38,13 @@ const plain = (label: string): UnitDef[] => [unit(label, label)];
 const METRES_PER_MILE = 1609.344;
 export const GRAVITY = 9.80665;
 const SPEED_UNITS = [unit('mph', 'mph', 2.23694), unit('kmh', 'km/h', 3.6), unit('kn', 'kn', 1.94384)];
+const PACE_UNITS: UnitDef[] = [unit('minmi', '/mi', METRES_PER_MILE), unit('minkm', '/km', 1000)];
 const FORCE_UNITS = [unit('g', 'g', 1 / GRAVITY), unit('ms2', 'm/s²')];
 
 /** Add a new kind of data here and every display type can show it. */
 export const CHANNELS: ChannelDef[] = [
   { id: 'speed', label: 'Speed', units: SPEED_UNITS, min: 0, max: 45, step: 5, decimals: 1, format: 'number' },
-  { id: 'pace', label: 'Pace', units: [unit('minmi', '/mi', METRES_PER_MILE), unit('minkm', '/km', 1000)], min: 240, max: 720, step: 60, decimals: 0, format: 'duration' },
+  { id: 'pace', label: 'Pace', units: PACE_UNITS, min: 180, max: 900, step: 180, decimals: 0, format: 'duration' },
   { id: 'heartRate', label: 'Heart rate', units: plain('bpm'), min: 40, max: 200, step: 20, decimals: 0, format: 'number' },
   { id: 'cadence', label: 'Cadence', units: [unit('rpm', 'rpm'), unit('spm', 'spm', 2)], min: 0, max: 140, step: 20, decimals: 0, format: 'number' },
   { id: 'power', label: 'Power', units: plain('W'), min: 0, max: 600, step: 100, decimals: 0, format: 'number' },
@@ -76,6 +77,10 @@ export const CHANNELS: ChannelDef[] = [
   { id: 'lapTime', label: 'Lap time', units: plain(''), min: 0, max: 3600, step: 600, decimals: 0, format: 'duration' },
   { id: 'lastLap', label: 'Last lap', units: plain(''), min: 0, max: 3600, step: 600, decimals: 0, format: 'duration' },
   { id: 'bestLap', label: 'Best lap', units: plain(''), min: 0, max: 3600, step: 600, decimals: 0, format: 'duration' },
+  { id: 'lapGap', label: 'Last lap change', units: plain(''), min: 0, max: 120, step: 20, decimals: 0, format: 'gap' },
+  { id: 'lapDistance', label: 'Lap distance', units: [unit('mi', 'mi', 1 / METRES_PER_MILE), unit('km', 'km', 0.001)], min: 0, max: 5, step: 1, decimals: 2, format: 'number' },
+  { id: 'lapSpeed', label: 'Lap average speed', units: SPEED_UNITS, min: 0, max: 45, step: 5, decimals: 1, format: 'number' },
+  { id: 'lapPace', label: 'Lap average pace', units: PACE_UNITS, min: 180, max: 900, step: 180, decimals: 0, format: 'duration' },
   { id: 'splitKm', label: 'Last kilometre', units: plain(''), min: 0, max: 600, step: 60, decimals: 0, format: 'duration' },
   { id: 'splitMile', label: 'Last mile', units: plain(''), min: 0, max: 900, step: 60, decimals: 0, format: 'duration' },
   { id: 'launchTime', label: 'Standing start', units: plain('s'), min: 0, max: 30, step: 5, decimals: 1, format: 'number' },
@@ -139,6 +144,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 export function formatValue(def: ChannelDef, value: number | null, decimals: number, showSign = false): string {
   if (value == null) return '--';
   if (def.format === 'duration') return duration(value);
+  if (def.format === 'gap') return `${value < 0 ? '-' : '+'}${duration(Math.abs(value))}`;
   if (def.format === 'clock') {
     const d = new Date(value * 1000);
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;

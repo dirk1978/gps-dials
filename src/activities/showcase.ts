@@ -1,5 +1,5 @@
 import { CAMERA_CHANNELS, type ChannelId } from '../overlay/channels.ts';
-import { DEFAULT_SIZES, type Template } from '../overlay/template.ts';
+import { DEFAULT_SIZES, type DisplayId, type Template } from '../overlay/template.ts';
 import { ACTIVITIES } from './index.ts';
 import { layout, type Example, type Spec } from './layout.ts';
 
@@ -8,6 +8,7 @@ const GAP = 0.008;
 const SMALLEST = 0.25;
 const LARGEST = 1.6;
 const SEARCH_STEPS = 24;
+const LAP_DISPLAYS: DisplayId[] = ['laps', 'lapbars'];
 
 /** Shown on top of each activity's own examples, as they suit anything with GPS. */
 const EVERY_ACTIVITY: Example[] = [
@@ -16,7 +17,7 @@ const EVERY_ACTIVITY: Example[] = [
   ['distance', 'route', { mapMode: 'fitRide', routeColorBy: 'speed' }],
   ['speed', 'tape'],
   ['speed', 'stats'],
-  ['speed', 'graph', { windowSeconds: 60 }],
+  ['speed', 'graph'],
   ['altitude', 'profile'],
   ['heading', 'compass'],
 ];
@@ -78,7 +79,7 @@ function spread(placed: NonNullable<ReturnType<typeof placeRows>>): typeof place
  */
 export function allDials(id: string, available: Set<ChannelId>, aspect = FRAME_ASPECT): Template {
   const activity = ACTIVITIES.find(a => a.id === id) ?? ACTIVITIES[0];
-  const examples = [...activity.examples, ...EVERY_ACTIVITY].filter(([channel]) => available.has(channel));
+  const examples = [...activity.examples, ...EVERY_ACTIVITY].filter(([channel, display]) => available.has(channel) && (!LAP_DISPLAYS.includes(display) || available.has('lapNumber')));
   const shown = new Set(examples.map(([channel]) => channel));
   const rest = [...activity.channels, ...CAMERA_CHANNELS].filter(c => available.has(c) && !shown.has(c));
   const all: Example[] = [...examples, ...[...new Set(rest)].map(c => [c, 'counter'] as Example)];

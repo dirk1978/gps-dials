@@ -1,4 +1,4 @@
-import type { ChannelDef, ChannelId } from '../channels.ts';
+import { formatValue, type ChannelDef, type ChannelId } from '../channels.ts';
 import type { OverlayData } from '../data.ts';
 import type { Style, Widget } from '../template.ts';
 
@@ -88,6 +88,11 @@ export function spacedLabel(env: DrawEnv, text: string, x: number, y: number, si
   const start = style.align === 'left' ? x + advance / 2 : style.align === 'right' ? x - width - advance / 2 : x - width / 2;
   ctx.textAlign = 'center';
   [...label].forEach((letter, i) => drawText(env, letter, start + i * advance, y));
+}
+
+/** A number on a scale. Paces and times read as minutes and seconds, as they do on the value itself. */
+export function scaleText(channel: ChannelDef, value: number): string {
+  return channel.format === 'duration' ? formatValue(channel, value, 0) : String(Math.round(value * 100) / 100);
 }
 
 export function rgba(hex: string, alpha: number): string {

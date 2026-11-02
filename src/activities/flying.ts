@@ -15,7 +15,7 @@ export const flying: ActivityDef = {
     ['leanAngle', 'tilt'],
     ['altitude', 'tape'],
     ['heading', 'tape'],
-    ['altitude', 'graph', { windowSeconds: 300, autoRange: true }],
+    ['altitude', 'graph', { autoRange: true }],
     ['altitude', 'stats'],
     ['height', 'bar', { orientation: 'vertical', thickness: 0.2, roundEnds: true }],
   ],

@@ -5,7 +5,7 @@ export const cycling: ActivityDef = {
   id: 'cycling',
   name: 'Cycling',
   fitSports: [2, 21],
-  channels: ['speed', 'averageSpeed', 'maxSpeed', 'heartRate', 'heartZone', 'cadence', 'power', 'powerZone', 'gradient', 'leanAngle', 'cornerSpeed', 'gForce', 'accelForward', 'accelLateral', 'altitude', 'ascent', 'temperature', 'distance', 'remaining', 'progress', 'rideTime', 'lapNumber', 'lapTime', 'lastLap', 'bestLap', 'splitKm', 'splitMile', 'launchTime', 'clipTime', 'timeOfDay', 'date'],
+  channels: ['speed', 'averageSpeed', 'maxSpeed', 'heartRate', 'heartZone', 'cadence', 'power', 'powerZone', 'gradient', 'leanAngle', 'cornerSpeed', 'gForce', 'accelForward', 'accelLateral', 'altitude', 'ascent', 'temperature', 'distance', 'remaining', 'progress', 'rideTime', 'lapNumber', 'lapTime', 'lastLap', 'bestLap', 'lapGap', 'lapDistance', 'lapSpeed', 'splitKm', 'splitMile', 'launchTime', 'clipTime', 'timeOfDay', 'date'],
   examples: [
     ['speed', 'dial'],
     ['heartRate', 'dial'],
@@ -19,6 +19,9 @@ export const cycling: ActivityDef = {
     ['power', 'zones'],
     ['cadence', 'bar', { orientation: 'vertical', thickness: 0.2, roundEnds: true }],
     ['altitude', 'graph', { graphAxis: 'distance' }],
+    ['speed', 'laps'],
+    ['lapTime', 'lapbars'],
+    ['lapGap', 'counter'],
     ['heartRate', 'stats'],
     ['power', 'stats'],
     ['ascent', 'bar'],

@@ -16,6 +16,10 @@ const HEADING_SPAN_M = 15;
 const DERIVED_SPEED_SPAN_S = 2;
 const ACCELERATION_SPAN_S = 3;
 const TURN_SPAN_S = 3;
+/** A lap this much shorter than usual is the odd bit at the end, not a lap to beat. */
+const FULL_LAP = 0.9;
+/** Pace swings wildly over the first few metres of a lap. */
+const MIN_LAP_METRES = 20;
 /** Below walking pace, GPS drift looks like sharp turns. */
 const MIN_TURNING_SPEED = 2;
 const MOVING_SPEED = 0.5;
@@ -29,8 +33,22 @@ const METRES_PER_MILE = 1609.344;
 /** 20 mph, which a bike reaches from a standing start. */
 export const DEFAULT_LAUNCH_SPEED = 8.9408;
 
+/** One lap the device recorded. The last runs to the end of the track. */
+export interface Lap {
+  number: number;
+  start: number;
+  end: number;
+  /** Seconds. */
+  time: number;
+  /** Metres. */
+  distance: number;
+  first: number;
+  last: number;
+}
+
 export interface OverlayData {
   track: TrackColumns;
+  laps: Lap[];
   /** Metres from the start of the track at each point. */
   distance: number[];
   /** Base-unit values at each track point, for channels that come from the track. */
@@ -177,6 +195,69 @@ function maxSpeedSeries(speed: (number | null)[]): (number | null)[] {
 }
 
 /** The lap at each point, and how long it has been running, plus the last and best finished laps. */
+export function lapList(t: number[], distance: number[], starts: number[]): Lap[] {
+  const sorted = [...new Set(starts)].sort((a, b) => a - b).filter(s => s < t[t.length - 1]);
+  if (sorted.length < 2) return [];
+  return sorted.map((start, i) => {
+    const end = sorted[i + 1] ?? t[t.length - 1];
+    const first = indexAtTime(t, Math.max(start, t[0]));
+    const last = indexAtTime(t, end);
+    return { number: i + 1, start, end, time: end - start, distance: distance[last] - distance[first], first, last };
+  });
+}
+
+/** The fastest of the first `count` laps. A short lap at the end isn't a fair comparison, so it's left out. */
+export function fastestLap(laps: Lap[], count: number): Lap | null {
+  const lengths = laps.map(l => l.distance).sort((a, b) => a - b);
+  const usual = lengths[lengths.length >> 1] ?? 0;
+  const fair = laps.slice(0, Math.max(0, count)).filter(l => l.distance >= usual * FULL_LAP);
+  return fair.reduce<Lap | null>((best, lap) => (!best || lap.time < best.time ? lap : best), null);
+}
+
+const lapMeans = new WeakMap<object, Map<number, number | null>>();
+
+/** What a lap's readings came to: its true average speed or pace, its total climb, or a plain mean. */
+export function lapAverage(data: OverlayData, id: ChannelId, lap: Lap): number | null {
+  if (id === 'speed') return lap.time > 0 ? lap.distance / lap.time : null;
+  if (id === 'pace') return lap.distance > 0 ? lap.time / lap.distance : null;
+  if (id === 'distance') return lap.distance;
+  const values = data.series[id];
+  if (!values) return null;
+  if (id === 'ascent') return (values[lap.last] ?? 0) - (values[lap.first] ?? 0);
+  let known = lapMeans.get(values);
+  if (!known) lapMeans.set(values, known = new Map());
+  if (!known.has(lap.number)) {
+    let sum = 0;
+    let count = 0;
+    for (let i = lap.first; i <= lap.last; i++) {
+      if (values[i] != null) {
+        sum += values[i]!;
+        count++;
+      }
+    }
+    known.set(lap.number, count ? sum / count : null);
+  }
+  return known.get(lap.number)!;
+}
+
+/** How the running lap is going, and how much quicker or slower the last lap was than the one before. */
+function lapProgress(t: number[], distance: number[], laps: Lap[]): Pick<OverlayData['series'], 'lapGap' | 'lapDistance' | 'lapSpeed' | 'lapPace'> {
+  const none = t.map(() => null);
+  if (laps.length === 0) return { lapGap: none, lapDistance: none, lapSpeed: none, lapPace: none };
+  const into = t.map((time, i) => {
+    const n = laps.findLastIndex(l => time >= l.start);
+    if (n < 0) return null;
+    const lap = laps[n];
+    return { metres: distance[i] - distance[lap.first], seconds: time - lap.start, change: n >= 2 ? laps[n - 1].time - laps[n - 2].time : null };
+  });
+  return {
+    lapGap: into.map(l => l?.change ?? null),
+    lapDistance: into.map(l => l?.metres ?? null),
+    lapSpeed: into.map(l => (l && l.seconds > 0 ? l.metres / l.seconds : null)),
+    lapPace: into.map(l => (l && l.metres > MIN_LAP_METRES ? l.seconds / l.metres : null)),
+  };
+}
+
 function lapSeries(t: number[], starts: number[]): Pick<OverlayData['series'], 'lapNumber' | 'lapTime' | 'lastLap' | 'bestLap'> {
   const none = t.map(() => null);
   if (starts.length < 2) return { lapNumber: none, lapTime: none, lastLap: none, bestLap: none };
@@ -288,6 +369,8 @@ export function prepareOverlayData(track: TrackColumns, gradientSpan = DEFAULT_G
   const forward = forwardAcceleration(track.t, speed);
   const lateral = lateralAcceleration(track.t, speed, heading);
 
+  const laps = lapList(track.t, distance, track.lapStarts ?? []);
+  const lapped = lapSeries(track.t, track.lapStarts ?? []);
   const series: OverlayData['series'] = {
     speed,
     pace: speed.map(v => (v != null && v > 0.5 ? 1 / v : null)),
@@ -314,7 +397,8 @@ export function prepareOverlayData(track: TrackColumns, gradientSpan = DEFAULT_G
     leanAngle: lateral.map(a => (a == null ? null : (Math.atan(a / GRAVITY) * 180) / Math.PI)),
     latitude: track.lat,
     longitude: track.lon,
-    ...lapSeries(track.t, track.lapStarts ?? []),
+    ...lapped,
+    ...lapProgress(track.t, distance, laps),
     splitKm: splitSeries(track.t, distance, METRES_PER_KM),
     splitMile: splitSeries(track.t, distance, METRES_PER_MILE),
     launchTime: launchSeries(track.t, speed, launchSpeed),
@@ -328,7 +412,7 @@ export function prepareOverlayData(track: TrackColumns, gradientSpan = DEFAULT_G
   }
   if (available.has('heartRate')) available.add('heartZone');
   if (available.has('power')) available.add('powerZone');
-  return { track, distance, series, available, gradientSpan, launchSpeed };
+  return { track, laps, distance, series, available, gradientSpan, launchSpeed };
 }
 
 /** When the track reached `metres` along itself. */

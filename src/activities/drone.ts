@@ -15,7 +15,7 @@ export const drone: ActivityDef = {
     ['leanAngle', 'tilt'],
     ['height', 'bar', { orientation: 'vertical', thickness: 0.2, roundEnds: true }],
     ['height', 'tape'],
-    ['height', 'graph', { windowSeconds: 60, autoRange: true }],
+    ['height', 'graph', { autoRange: true }],
     ['height', 'stats'],
     ['homeDistance', 'bar'],
     ['homeDistance', 'counter'],
@@ -28,6 +28,6 @@ export const drone: ActivityDef = {
     ['heading', 'compass', LEFT, BOTTOM_DIAL, DIAL_W, DIAL_H],
     ['homeDistance', 'counter', 0.172, 0.84, 0.13, 0.135],
     ['clipTime', 'counter', 0.312, 0.84, 0.1, 0.135],
-    ['height', 'graph', 0.422, 0.79, 0.4, 0.185, { windowSeconds: 60, autoRange: true, labelText: 'Height' }],
+    ['height', 'graph', 0.422, 0.79, 0.4, 0.185, { autoRange: true, labelText: 'Height' }],
   ]),
 };

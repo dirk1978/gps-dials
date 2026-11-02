@@ -49,8 +49,8 @@ export const PRESETS: Template[] = [
     ['altitude', 'profile', 0.462, 0.84, 0.525, 0.135],
   ]),
   layout('Power and heart', [
-    ['power', 'graph', LEFT, 0.72, 0.34, 0.255, { windowSeconds: 120, max: 500 }],
-    ['heartRate', 'graph', 0.648, 0.72, 0.34, 0.255, { windowSeconds: 300, min: 60, max: 190 }],
+    ['power', 'graph', LEFT, 0.72, 0.34, 0.255, { max: 500 }],
+    ['heartRate', 'graph', 0.648, 0.72, 0.34, 0.255, { min: 60, max: 190 }],
     ['cadence', 'bar', 0.362, 0.86, 0.276, 0.115],
   ]),
   layout('Minimal', [
@@ -72,8 +72,11 @@ export const PRESETS: Template[] = [
     ['lapTime', 'counter', 0.1, 0.025, 0.13, COUNTER_H],
     ['lastLap', 'counter', 0.238, 0.025, 0.13, COUNTER_H],
     ['bestLap', 'counter', 0.376, 0.025, 0.13, COUNTER_H],
+    ['lapGap', 'counter', 0.514, 0.025, 0.13, COUNTER_H],
+    ['speed', 'laps', LEFT, 0.17, 0.24, 0.62],
     ['speed', 'dial', RIGHT_DIAL, BOTTOM_DIAL, DIAL_W, DIAL_H],
-    ['heartRate', 'zones', LEFT, 0.87, 0.22, 0.105],
+    ['lapTime', 'lapbars', 0.26, 0.8, 0.565, 0.175],
+    ['heartRate', 'zones', LEFT, 0.87, 0.24, 0.105],
   ]),
   layout('Track day', [
     ['distance', 'route', LEFT, 0.025, MAP_W, MAP_H, { mapMode: 'fitRide', routeColorBy: 'speed' }],

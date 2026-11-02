@@ -54,6 +54,10 @@ test('colours a route by its data', () => {
   assert.ok(render({ ...defaultTemplate, widgets: [route] }) > 0);
 });
 
+test('min, average and max cover the whole activity unless told otherwise', () => {
+  assert.equal(resolveStyle(newWidget('speed', 'stats'), THEMES[0]).statsSpan, 'ride');
+});
+
 test('new profiles and graphs cover the whole ride, and saved windows stay', () => {
   assert.equal(resolveStyle(newWidget('altitude', 'profile'), THEMES[0]).fullRide, true);
   assert.equal(resolveStyle(newWidget('speed', 'graph'), THEMES[0]).graphSpan, 'ride');
@@ -113,6 +117,23 @@ test('zones follow the rider, and a hand-set list wins', () => {
   const mine = [{ upTo: 50, color: '#000000' }];
   assert.deepEqual(resolveStyle({ ...heart, style: { zones: mine } }, THEMES[0]).zones, mine);
   assert.equal(resolveStyle(newWidget('speed', 'dial'), THEMES[0]).useZones, false);
+});
+
+const lapped = prepareOverlayData({ ...track, lapStarts: [1000, 1100, 1200, 1300] });
+
+function renderLaps(style: object = {}, display: DisplayId = 'laps'): number {
+  const widget = { ...newWidget('speed', display, 0.1, 0.1), width: 0.5, height: 0.6, style };
+  const canvas = createCanvas(640, 360);
+  drawFrame(canvas.getContext('2d') as unknown as Ctx, { width: 640, height: 360, template: { ...defaultTemplate, widgets: [widget] }, data: lapped, clipStart: 1100, clipEnd: 1200 }, 1150);
+  return canvas.getContext('2d').getImageData(0, 0, 640, 360).data.reduce((n, v, i) => n + (i % 4 === 3 && v > 0 ? 1 : 0), 0);
+}
+
+test('draws lap tables and bars, and hides them with no laps', () => {
+  for (const display of ['laps', 'lapbars'] as DisplayId[]) {
+    assert.ok(renderLaps({}, display) > 0);
+    assert.ok(renderLaps({ lapSpan: 'soFar' }, display) > 0);
+    assert.equal(render({ ...defaultTemplate, widgets: [newWidget('speed', display, 0.1, 0.1)] }), 0);
+  }
 });
 
 test('hidden widgets draw nothing', () => {

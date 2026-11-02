@@ -56,9 +56,9 @@ The **Design** tab works straight on top of your footage. Any data can be shown 
 
 - **Data:** speed, average and top speed, pace, heart rate, cadence, power, zones, temperature, altitude, gradient, climbing, climb rate, heading, distance, progress, coordinates, time and date.
 - **Forces:** lean angle, pitch, G-force, acceleration, cornering force and corner speed.
-- **Timing:** laps from your device, kilometre and mile splits, and a standing start timer to a speed you choose.
+- **Timing:** laps from your device, with the change from the lap before, lap distance and lap average, kilometre and mile splits, and a standing start timer to a speed you choose.
 - **Camera:** ISO, shutter speed, aperture and white balance.
-- **Displays:** dial, zero-centre dial, arc, compass, sliding tape, tilt indicator, artificial horizon, G-force scope, bar, zone blocks, number, min, average and max, graph over time or distance, road profile, map, route and custom text. Your own images can be a logo, a dial and needle, or a picture that fills or grows with the value.
+- **Displays:** dial, zero-centre dial, arc, compass, sliding tape, tilt indicator, artificial horizon, G-force scope, bar, zone blocks, number, min, average and max, a table of every lap, lap bars, graph over time or distance, road profile, map, route and custom text. Your own images can be a logo, a dial and needle, or a picture that fills or grows with the value.
 
 ![Every kind of display on one frame, including dials, a compass, an artificial horizon, zones, graphs, a route and a map](docs/screenshots/gauges.jpg)
 

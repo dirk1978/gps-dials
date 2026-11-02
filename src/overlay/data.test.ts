@@ -1,3 +1,4 @@
+import { fastestLap, lapAverage, lapList } from './data.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { TrackColumns } from '../sync/timeline.ts';
@@ -187,4 +188,29 @@ test('formats times, compass points and signs', () => {
   assert.equal(formatValue(channelDef('heading'), 92, 0), 'E');
   assert.equal(formatValue(channelDef('gradient'), 4.25, 1, true), '+4.3');
   assert.equal(formatValue(channelDef('speed'), null, 1), '--');
+});
+
+test('lists laps, the last running to the end of the track', () => {
+  const t = [0, 10, 20, 30, 40, 50];
+  const distance = [0, 100, 200, 300, 400, 410];
+  const laps = lapList(t, distance, [0, 20, 40]);
+  assert.deepEqual(laps.map(l => [l.number, l.time, l.distance]), [[1, 20, 200], [2, 20, 200], [3, 10, 10]]);
+  assert.deepEqual(lapList(t, distance, [0]), []);
+});
+
+test('the fastest lap ignores the short one at the end, and laps still to come', () => {
+  const lap = (number: number, time: number, distance: number) => ({ number, start: 0, end: time, time, distance, first: 0, last: 0 });
+  const laps = [lap(1, 300, 1000), lap(2, 280, 1000), lap(3, 270, 1000), lap(4, 40, 100)];
+  assert.equal(fastestLap(laps, 4)?.number, 3);
+  assert.equal(fastestLap(laps, 2)?.number, 2);
+  assert.equal(fastestLap(laps, 0), null);
+});
+
+test('a lap keeps its true average speed and pace', () => {
+  const lap = { number: 1, start: 0, end: 100, time: 100, distance: 400, first: 0, last: 1 };
+  const data = { series: { heartRate: [100, 120] } } as never;
+  assert.equal(lapAverage(data, 'speed', lap), 4);
+  assert.equal(lapAverage(data, 'pace', lap), 0.25);
+  assert.equal(lapAverage(data, 'heartRate', lap), 110);
+  assert.equal(lapAverage(data, 'power', lap), null);
 });

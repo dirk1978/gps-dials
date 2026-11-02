@@ -1,5 +1,5 @@
 import { formatValue } from '../channels.ts';
-import { drawPanel, drawText, rgba, setFont, spacedLabel, valueColor, type DisplayDef } from './common.ts';
+import { drawPanel, drawText, rgba, scaleText, setFont, spacedLabel, valueColor, type DisplayDef } from './common.ts';
 
 const MINORS_PER_STEP = 5;
 
@@ -45,7 +45,7 @@ export const tape: DisplayDef = {
       ctx.lineTo(vertical ? x + reach : x, vertical ? y : y + reach);
       ctx.stroke();
       if (major && style.showNumbers) {
-        const text = wraps ? formatValue(channel, ((v % 360) + 360) % 360, 0) : String(Math.round(v * 100) / 100);
+        const text = wraps ? formatValue(channel, ((v % 360) + 360) % 360, 0) : scaleText(channel, v);
         drawText(env, text, vertical ? x + tick + size * 0.4 : x, vertical ? y : y + tick + size * 0.7);
       }
     }

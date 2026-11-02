@@ -5,7 +5,7 @@ import { DEFAULT_RIDER, defaultZones, type Rider, type Zone } from './zones.ts';
 export type { Zone } from './zones.ts';
 export { THEMES };
 
-export type DisplayId = 'dial' | 'arc' | 'vsi' | 'compass' | 'tape' | 'tilt' | 'horizon' | 'scope' | 'bar' | 'zones' | 'graph' | 'counter' | 'stats' | 'text' | 'route' | 'profile' | 'map' | 'image';
+export type DisplayId = 'dial' | 'arc' | 'vsi' | 'compass' | 'tape' | 'tilt' | 'horizon' | 'scope' | 'bar' | 'zones' | 'graph' | 'counter' | 'stats' | 'text' | 'route' | 'profile' | 'map' | 'image' | 'laps' | 'lapbars';
 
 /** The look shared across a layout. Changing the theme recolours everything not set by hand. */
 export interface Theme {
@@ -100,6 +100,7 @@ export interface Style {
   trailSeconds: number;
   /** What a stats panel covers: the ride or clip, up to now or all of it. */
   statsSpan: 'rideSoFar' | 'ride' | 'soFar' | 'clip';
+  lapSpan: 'all' | 'soFar';
   /** Pictures for a home-made gauge, kept in the layout so it travels with it. */
   imageDial: string;
   imageNeedle: string;
@@ -197,7 +198,7 @@ const BASE_STYLE: Style = {
   thickness: 0.085, roundEnds: false, startAngle: 135, sweepAngle: 270, reverse: false, showNeedle: true, needleLength: 0.74, needleWidth: 0.04, showHub: true,
   orientation: 'horizontal',
   compassMode: 'card',
-  tapeSteps: 4, skyColor: '#3f7fc4', groundColor: '#7a5533', scopeRange: 0.6, trailSeconds: 4, statsSpan: 'rideSoFar', imageDial: '', imageNeedle: '', imageMode: 'still',
+  tapeSteps: 4, skyColor: '#3f7fc4', groundColor: '#7a5533', scopeRange: 0.6, trailSeconds: 4, statsSpan: 'ride', lapSpan: 'all', imageDial: '', imageNeedle: '', imageMode: 'still',
   graphSpan: 'ride', graphAxis: 'time', windowMetres: 2000,
   windowSeconds: 60, fillArea: true, lineWidth: 3, showMarker: true,
   useZones: false, zones: [], hideWhenNoData: true,
@@ -255,7 +256,7 @@ export function newId(): string {
 
 export const DEFAULT_SIZES: Record<DisplayId, [number, number]> = {
   dial: [0.15, 0.2667], arc: [0.15, 0.2667], vsi: [0.15, 0.2667], compass: [0.15, 0.2667], tape: [0.3, 0.1], tilt: [0.15, 0.17], horizon: [0.15, 0.2667], scope: [0.15, 0.2667],
-  zones: [0.22, 0.1], stats: [0.22, 0.12], image: [0.15, 0.2667], bar: [0.25, 0.08], graph: [0.34, 0.18], counter: [0.11, 0.11], text: [0.24, 0.08], route: [0.2, 0.3556], profile: [0.5, 0.11], map: [0.2, 0.3556],
+  zones: [0.22, 0.1], stats: [0.22, 0.12], image: [0.15, 0.2667], bar: [0.25, 0.08], graph: [0.34, 0.18], counter: [0.11, 0.11], text: [0.24, 0.08], route: [0.2, 0.3556], profile: [0.5, 0.11], map: [0.2, 0.3556], laps: [0.24, 0.4], lapbars: [0.34, 0.18],
 };
 
 export function newWidget(channel: ChannelId, display: DisplayId, x = 0.4, y = 0.4): Widget {

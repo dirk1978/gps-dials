@@ -1,7 +1,8 @@
-import { autoRange, drawText, fraction, rgba, setFont, spacedLabel, valueColor, type DisplayDef, type DrawEnv } from './common.ts';
+import { autoRange, drawText, fraction, rgba, scaleText, setFont, spacedLabel, valueColor, type DisplayDef, type DrawEnv } from './common.ts';
 
 const ZONE_TRACK_OPACITY = 0.38;
 const MAX_VALUE_WIDTH = 0.6;
+const MAX_TIME_WIDTH = 0.5;
 const toRad = (degrees: number) => (degrees * Math.PI) / 180;
 
 function drawGauge(env: DrawEnv, needle: boolean, centred = false): void {
@@ -64,7 +65,8 @@ function drawGauge(env: DrawEnv, needle: boolean, centred = false): void {
   }
 
   if (style.showTicks || style.showNumbers) {
-    setFont(ctx, style, R * 0.165 * style.scaleSize);
+    // Times like 12:00 are wider than plain numbers, so they sit smaller to keep clear of each other.
+    setFont(ctx, style, R * (env.channel.format === 'duration' ? 0.125 : 0.165) * style.scaleSize);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     const outer = band - R * (style.thickness * 0.5 + 0.03);
@@ -88,7 +90,7 @@ function drawGauge(env: DrawEnv, needle: boolean, centred = false): void {
       if (style.showNumbers && major) {
         ctx.fillStyle = style.tickColor;
         const place = inner - R * 0.12;
-        drawText(env, String(Math.round(v * 100) / 100), cx + cos * place, cy + sin * place);
+        drawText(env, scaleText(env.channel, v), cx + cos * place, cy + sin * place);
       }
     }
   }
@@ -122,8 +124,9 @@ function drawGauge(env: DrawEnv, needle: boolean, centred = false): void {
     const size = R * 0.42 * style.valueSize;
     setFont(ctx, style, size);
     // Long readings shrink to stay clear of the numbers at the ends of the scale.
+    const room = R * (env.channel.format === 'duration' ? MAX_TIME_WIDTH : MAX_VALUE_WIDTH);
     const width = ctx.measureText(valueText).width;
-    if (width > R * MAX_VALUE_WIDTH) setFont(ctx, style, size * ((R * MAX_VALUE_WIDTH) / width));
+    if (width > room) setFont(ctx, style, size * (room / width));
     ctx.fillStyle = color;
     drawText(env, valueText, cx, cy + R * 0.44);
   }
